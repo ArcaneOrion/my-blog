@@ -88,6 +88,11 @@ export const probabilityScene: SceneSpec = {
     sideNote: 'X ~ N(μ, σ²)\nE[X], Var[X]',
   },
 
+  getScreenAnchor: (sctx) => ({
+    x: sctx.width * 0.72,
+    y: sctx.height * 0.45,
+  }),
+
   layout: (points, sctx) => {
     const { ax, ay, range } = anchorCenter(sctx);
     ensureWalkers(sctx);

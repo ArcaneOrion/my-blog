@@ -44,6 +44,11 @@ export const gatewayScene: SceneSpec = {
 
   cursor: 'pointer',
 
+  getScreenAnchor: (sctx) => ({
+    x: sctx.width * 0.5,
+    y: sctx.height * 0.22,
+  }),
+
   hitTest: (x, y, sctx) => isInHitZone(x, y, sctx),
 
   onClick: (sctx) => {

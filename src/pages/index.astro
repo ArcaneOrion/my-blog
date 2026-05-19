@@ -2,7 +2,6 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import StructureField from '../components/StructureField.astro';
 import { scenes } from '../scenes';
-import { siteBase } from '../lib/site';
 
 const heroScene = scenes[0];
 const sectionScenes = scenes.slice(1);
@@ -10,6 +9,14 @@ const sectionScenes = scenes.slice(1);
 function italicLines(text: string) {
   return text.split('\n');
 }
+
+// 每个 scene 的诗句对齐方式：决定 narrative 容器锚点对齐到容器的哪个角
+const narrativeAlign: Record<string, 'left' | 'right' | 'center-bottom' | 'center-top'> = {
+  'linear-algebra': 'left',
+  analysis: 'right',
+  probability: 'left',
+  gateway: 'center-bottom',
+};
 ---
 
 <BaseLayout title="Arcane Orion — Structure Observatory">
@@ -21,9 +28,24 @@ function italicLines(text: string) {
     <p data-sys-line="object" class="text-arcane-text-dim/60">{heroScene.sysInfo.object}</p>
   </aside>
 
+  {/* Narrative 层：诗句独立浮层，由 canvas scene 几何锚点驱动 */}
+  <div class="narrative-layer" aria-hidden="false">
+    {sectionScenes.map((scene) => (
+      <div
+        class="narrative-quote"
+        data-narrative-scene={scene.id}
+        data-narrative-align={narrativeAlign[scene.id] || 'left'}
+      >
+        {italicLines(scene.copy.italicCopy).map((line) => (
+          <span class="block">{line || ' '}</span>
+        ))}
+      </div>
+    ))}
+  </div>
+
   <div class="relative z-10 page-fade-in">
     <main class="relative">
-      <!-- Hero: entry scene -->
+      {/* Hero: entry scene，保留现有 fade-in 排版（不走 narrative） */}
       <section
         class="page-shell home-stage home-stage--hero relative flex items-center"
         data-stage={heroScene.id}
@@ -48,7 +70,7 @@ function italicLines(text: string) {
         </div>
       </section>
 
-      <!-- 4 个 stage：根据 anchor.x 决定文字左/右对照 -->
+      {/* 4 个 stage：诗句已外移到 narrative 层，section 内只剩 sectionLabel + sideNote */}
       {sectionScenes.map((scene) => {
         const textOnLeft = scene.anchor.x > 0.5;
         return (
@@ -58,10 +80,10 @@ function italicLines(text: string) {
             data-reveal
           >
             <div class:list={[
-              'grid w-full gap-12',
+              'grid w-full gap-12 items-end',
               textOnLeft ? 'lg:grid-cols-[1fr_0.72fr]' : 'lg:grid-cols-[0.72fr_1fr]',
             ]}>
-              {/* 文字列 */}
+              {/* sectionLabel：作为 section 边界标识，固定在视觉栏 */}
               <div class:list={[
                 'self-end',
                 textOnLeft ? 'order-1' : 'order-1 lg:text-right lg:order-2',
@@ -69,18 +91,9 @@ function italicLines(text: string) {
                 <p class="font-mono text-[0.62rem] uppercase tracking-[0.42em] text-arcane-math" data-reveal-child>
                   {scene.copy.sectionLabel}
                 </p>
-                <p
-                  class="mt-6 text-[1.4rem] leading-[1.7] text-arcane-text md:text-[1.6rem]"
-                  style="font-family: var(--font-italic); font-weight: 400; font-style: italic;"
-                  data-reveal-child
-                >
-                  {italicLines(scene.copy.italicCopy).map((line) => (
-                    <span class="block">{line || ' '}</span>
-                  ))}
-                </p>
               </div>
 
-              {/* 注脚列（不再有大 glyph） */}
+              {/* sideNote */}
               <div class:list={[
                 'self-end pb-2',
                 textOnLeft ? 'lg:text-right order-2' : 'order-2 lg:order-1',
@@ -103,6 +116,7 @@ function italicLines(text: string) {
   <script>
     import { scenes, scenesById } from '../scenes';
     import { initScrollReveal } from '../lib/scroll-reveal';
+    import { initNarrativeBind } from '../lib/narrative-bind';
 
     // 透传给 gateway scene 的 onClick：base URL 用于拼跳转 URL
     (window as any).__BLOG_BASE__ = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -148,7 +162,10 @@ function italicLines(text: string) {
       stages.forEach((stage) => stageObserver.observe(stage));
     }
 
-    // scroll-linked reveal（γ + δ：blur + scale + scroll progress）
+    // sectionLabel / sideNote 还在用 reveal 流，保留
     initScrollReveal();
+
+    // 诗句 narrative 层：锚定到 canvas scene 几何
+    initNarrativeBind();
   </script>
 </BaseLayout>

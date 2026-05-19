@@ -351,6 +351,88 @@
     transition: opacity 600ms ease;
   }
 
+  /* === Narrative layer：诗句独立浮层，锚定到 canvas scene 几何 === */
+  .narrative-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  .narrative-quote {
+    position: absolute;
+    left: 0;
+    top: 0;
+    /* anchor 由 JS 写入像素值；--align-x/y 控制锚点落在容器的哪个角 */
+    --align-x: -50%;
+    --align-y: -50%;
+    --narrative-p: 0;
+    --narrative-stretch: 0;
+    --anchor-x: 50%;
+    --anchor-y: 50%;
+    /* 通过 translate3d 把容器移到锚点 + 对齐方式 + 进度方向的 Y 偏移 */
+    transform:
+      translate3d(var(--anchor-x), var(--anchor-y), 0)
+      translate(var(--align-x), var(--align-y))
+      translateY(calc((1 - var(--narrative-p)) * 28px));
+    opacity: var(--narrative-p);
+    filter: blur(calc((1 - var(--narrative-p)) * 9px));
+    will-change: transform, opacity, filter;
+    transition:
+      opacity 320ms cubic-bezier(0.22, 0.61, 0.36, 1),
+      filter 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
+
+    font-family: var(--font-italic);
+    font-style: italic;
+    font-weight: 400;
+    font-size: clamp(1.35rem, 2.4vw, 1.85rem);
+    line-height: 1.78;
+    color: var(--color-text);
+    letter-spacing: calc(0.012em + var(--narrative-stretch) * 0.10em);
+    max-width: min(34rem, 42vw);
+    text-wrap: balance;
+  }
+
+  .narrative-quote[data-narrative-align="left"] {
+    --align-x: 0;
+    --align-y: -50%;
+    text-align: left;
+  }
+
+  .narrative-quote[data-narrative-align="right"] {
+    --align-x: -100%;
+    --align-y: -50%;
+    text-align: right;
+  }
+
+  .narrative-quote[data-narrative-align="center-bottom"] {
+    --align-x: -50%;
+    --align-y: -100%;
+    text-align: center;
+  }
+
+  .narrative-quote[data-narrative-align="center-top"] {
+    --align-x: -50%;
+    --align-y: 0;
+    text-align: center;
+  }
+
+  /* 诗句每行：内部 stagger 由 progress 的窗口区间驱动 */
+  .narrative-quote > span {
+    --line-index: 0;
+    --line-window: 0.2;
+    --line-p: clamp(0, calc((var(--narrative-p) - var(--line-index) * 0.12) / var(--line-window)), 1);
+    opacity: var(--line-p);
+    transform: translateY(calc((1 - var(--line-p)) * 12px));
+    transition: opacity 220ms linear;
+  }
+
+  .narrative-quote > span:nth-child(1) { --line-index: 0; }
+  .narrative-quote > span:nth-child(2) { --line-index: 1; }
+  .narrative-quote > span:nth-child(3) { --line-index: 2; }
+  .narrative-quote > span:nth-child(4) { --line-index: 3; }
+  .narrative-quote > span:nth-child(5) { --line-index: 4; }
+
   body {
     cursor: crosshair;
   }

@@ -43,6 +43,17 @@ export const linearAlgebraScene: SceneSpec = {
     sideNote: 'M ∈ R²ˣ²\ne₁ · e₂',
   },
 
+  getScreenAnchor: (sctx) => ({
+    x: sctx.width * 0.18,
+    y: sctx.height * 0.50,
+  }),
+
+  getStretch: (sctx) => {
+    const m = transformMatrix(sctx.time);
+    const delta = Math.hypot(m[0] - 1, m[1], m[2], m[3] - 1);
+    return Math.min(1, delta / 0.7);
+  },
+
   layout: (points, sctx) => {
     const { cx, cy, unit } = anchorCenter(sctx);
     const m = transformMatrix(sctx.time);

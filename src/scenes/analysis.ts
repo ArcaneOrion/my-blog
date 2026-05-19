@@ -47,6 +47,11 @@ export const analysisScene: SceneSpec = {
     sideNote: 'α · β · γ · δ\nε · ζ · κ · λ',
   },
 
+  getScreenAnchor: (sctx) => ({
+    x: sctx.width * 0.80,
+    y: sctx.height * 0.66,
+  }),
+
   layout: (points, sctx) => {
     const { cx, cy, span } = anchorCenter(sctx);
 

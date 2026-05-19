@@ -64,6 +64,10 @@ export interface SceneSpec {
   onClick?: (sctx: SceneCtx) => void;
   // 鼠标悬停在 hit 区域时的光标样式
   cursor?: string;
+  // 诗句容器的像素锚点（HTML narrative 层用，绑定到 scene 几何对象）
+  getScreenAnchor?: (sctx: SceneCtx) => { x: number; y: number };
+  // 几何结构当前的"扰动幅度" 0-1，driving narrative 容器的 letter-spacing 等
+  getStretch?: (sctx: SceneCtx) => number;
 }
 
 export function rgba(color: ColorTuple, alpha: number): string {

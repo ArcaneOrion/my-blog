@@ -19,6 +19,11 @@ export const entryScene: SceneSpec = {
     italicCopy: '没有结构，\n就没有理解。',
   },
 
+  getScreenAnchor: (sctx) => ({
+    x: sctx.width * 0.10,
+    y: sctx.height * 0.62,
+  }),
+
   layout: (points, sctx) => {
     const { width, height } = sctx;
     points.forEach((p, i) => {
