@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Structure & Understanding</title>
+    <!-- 引入高阶艺术字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;1,400&family=Inter:wght@100;300&family=Playfair+Display:ital@1&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #1a1a1a;
+            --line-color: rgba(0, 0, 0, 0.08);
+            --accent-gray: #888888;
+            --font-main: 'Bodoni Moda', serif;
+            --font-sans: 'Inter', sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow-x: hidden;
+            cursor: crosshair;
+        }
+
+        /* 几何绘图背景 */
+        #geo-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* 空间布局 */
+        .container {
+            position: relative;
+            z-index: 10;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 60px;
+        }
+
+        /* 极简导航 */
+        nav {
+            height: 15vh;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding-bottom: 20px;
+            font-family: var(--font-sans);
+            font-size: 10px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        /* 主标题区域 */
+        .hero {
+            height: 70vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .title-wrap {
+            max-width: 800px;
+        }
+
+        .hero h1 {
+            font-family: var(--font-main);
+            font-size: clamp(2.5rem, 6vw, 4.5rem);
+            font-weight: 400;
+            line-height: 1.1;
+            margin-bottom: 30px;
+            transition: filter 0.8s ease;
+        }
+
+        /* 初始状态虚化 */
+        .blur-in {
+            filter: blur(12px);
+            opacity: 0;
+            animation: clearFocus 2.5s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+        }
+
+        @keyframes clearFocus {
+            to { filter: blur(0); opacity: 1; }
+        }
+
+        .hero p {
+            font-family: var(--font-sans);
+            font-size: 11px;
+            letter-spacing: 4px;
+            color: var(--accent-gray);
+            text-transform: uppercase;
+        }
+
+        /* 渐进加载的侧边装饰线 */
+        .loading-line {
+            width: 0;
+            height: 1px;
+            background: var(--text-color);
+            margin: 40px 0;
+            transition: width 2s ease;
+        }
+
+        /* 内容列表 */
+        .post-list {
+            margin-top: 10vh;
+            padding-bottom: 20vh;
+        }
+
+        .post-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            padding: 30px 0;
+            border-bottom: 1px solid #f0f0f0;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.5s;
+        }
+
+        /* 鼠标悬停时的虚化渐变交互 */
+        .post-item:hover {
+            padding-left: 20px;
+            opacity: 0.5;
+        }
+
+        .post-item:hover .item-title {
+            filter: blur(0px);
+        }
+
+        .item-title {
+            font-family: var(--font-main);
+            font-size: 1.8rem;
+            filter: blur(1px); /* 默认微弱虚化 */
+            transition: filter 0.4s;
+        }
+
+        .item-meta {
+            font-family: var(--font-sans);
+            font-size: 9px;
+            letter-spacing: 2px;
+            color: #ccc;
+        }
+
+        /* 页脚 */
+        footer {
+            height: 10vh;
+            font-family: var(--font-sans);
+            font-size: 9px;
+            color: #999;
+            display: flex;
+            justify-content: center;
+        }
+
+    </style>
+</head>
+<body>
+
+    <canvas id="geo-canvas"></canvas>
+
+    <div class="container">
+        <nav>
+            <div>Project // 001</div>
+            <div>Structure & Understanding</div>
+            <div>London, 2024</div>
+        </nav>
+
+        <section class="hero">
+            <div class="title-wrap">
+                <h1 class="blur-in">No structure,<br>No understanding.</h1>
+                <div class="loading-line" id="line"></div>
+                <p>Establishing logical geometry within the void.</p>
+            </div>
+        </section>
+
+        <section class="post-list">
+            <a href="#" class="post-item">
+                <span class="item-title">Axion of Choice</span>
+                <span class="item-meta">01 / GEOMETRY</span>
+            </a>
+            <a href="#" class="post-item">
+                <span class="item-title">The Void & The Frame</span>
+                <span class="item-meta">02 / PHILOSOPHY</span>
+            </a>
+            <a href="#" class="post-item">
+                <span class="item-title">Algorithmic Order</span>
+                <span class="item-meta">03 / CODE</span>
+            </a>
+        </section>
+
+        <footer>
+            THE ARCHIVE — ALL RIGHTS RESERVED.
+        </footer>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('geo-canvas');
+        const ctx = canvas.getContext('2d');
+        let points = [];
+        let mouse = { x: -1000, y: -1000 };
+        const maxPoints = 60; // 点的数量
+
+        // 初始化 Canvas
+        function init() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            points = [];
+            // 渐进式生成点
+            for (let i = 0; i < maxPoints; i++) {
+                points.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    vx: (Math.random() - 0.5) * 0.3,
+                    vy: (Math.random() - 0.5) * 0.3,
+                    size: Math.random() * 1.5
+                });
+            }
+            document.getElementById('line').style.width = '200px';
+        }
+
+        // 动画循环
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制网格背景（极淡）
+            drawGrid();
+
+            points.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+
+                if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+                if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+
+                // 绘制点
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                ctx.fill();
+
+                // 逻辑连线（只在点与点近，或点与鼠标近时产生结构）
+                for (let j = i + 1; j < points.length; j++) {
+                    const p2 = points[j];
+                    const dist = Math.hypot(p.x - p2.x, p.y - p2.y);
+                    const mouseDist = Math.hypot(p.x - mouse.x, p.y - mouse.y);
+
+                    if (dist < 180) {
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        // 如果鼠标靠近，线条颜色加深，体现“理解（交互）产生结构”
+                        const alpha = mouseDist < 200 ? (1 - dist/180) * 0.4 : (1 - dist/180) * 0.1;
+                        ctx.strokeStyle = `rgba(0, 0, 0, ${alpha})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        function drawGrid() {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(0,0,0,0.02)';
+            ctx.lineWidth = 1;
+            for(let i=0; i<canvas.width; i+=100) {
+                ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height);
+            }
+            for(let i=0; i<canvas.height; i+=100) {
+                ctx.moveTo(0, i); ctx.lineTo(canvas.width, i);
+            }
+            ctx.stroke();
+        }
+
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        window.addEventListener('resize', init);
+
+        // 启动
+        init();
+        animate();
+
+        // 滚动时动态改变标题虚化感
+        window.addEventListener('scroll', () => {
+            const h1 = document.querySelector('hero h1');
+            const scroll = window.scrollY;
+            if (scroll > 10) {
+                document.querySelector('.hero h1').style.filter = `blur(${scroll/40}px)`;
+            } else {
+                document.querySelector('.hero h1').style.filter = `blur(0px)`;
+            }
+        });
+
+    </script>
+</body>
+</html>

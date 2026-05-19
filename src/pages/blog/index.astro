@@ -1,0 +1,112 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Nav from '../../components/Nav.astro';
+import ArticleCard from '../../components/ArticleCard.astro';
+import StructureField from '../../components/StructureField.astro';
+import { getCollection } from 'astro:content';
+import { domains, primaryDomain } from '../../lib/site';
+
+const posts = await getCollection('blog', (post) => !post.data.draft);
+posts.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+
+const domainList = Object.values(domains);
+const allTags = [...new Set(posts.flatMap(post => post.data.tags))];
+---
+
+<BaseLayout title="Records — Arcane Orion">
+  <StructureField mode="triad" />
+  <div class="relative z-10">
+    <Nav current="blog" />
+    
+    <main class="page-shell py-16">
+      <header class="grid gap-8 py-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
+        <div>
+          <p class="axis-label">archive / observations</p>
+          <h1 class="mt-4 font-display text-5xl font-bold leading-none text-arcane-text md:text-7xl">
+            Records
+          </h1>
+          <p class="mt-6 max-w-2xl text-lg leading-8 text-arcane-text-secondary">
+            文章不是时间线上的碎片，而是三种结构透镜下的观测记录。
+          </p>
+        </div>
+
+        <div class="observatory-panel grid grid-cols-3 p-4">
+          {domainList.map(domain => {
+            const count = posts.filter(post => primaryDomain(post.data.tags).id === domain.id).length;
+            return (
+              <div class={`domain-${domain.id} border-r border-white/10 p-4 last:border-r-0`}>
+                <p class="font-mono text-2xl text-domain">{domain.glyph}</p>
+                <p class="mt-3 font-mono text-[0.68rem] uppercase text-arcane-text-dim">{domain.label}</p>
+                <p class="mt-1 font-display text-2xl text-arcane-text">{count}</p>
+              </div>
+            );
+          })}
+        </div>
+      </header>
+      
+      <section class="border border-arcane-border bg-white mb-8 p-4" style="border-radius:8px">
+        <div class="flex flex-wrap gap-2">
+          <button 
+            class="tag-filter border border-arcane-math/20 bg-arcane-math/6 px-3 py-2 font-mono text-[0.68rem] uppercase text-arcane-math"
+            data-tag="all"
+          >
+            all
+          </button>
+          {allTags.map(tag => (
+            <button 
+            class="tag-filter border border-arcane-border px-3 py-2 font-mono text-[0.68rem] uppercase text-arcane-text-secondary transition-colors hover:border-arcane-text-secondary hover:text-arcane-text"
+              data-tag={tag}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      </section>
+      
+      <section class="grid grid-cols-1 gap-5 md:grid-cols-2" id="posts-grid">
+        {posts.map(post => (
+          <div class="post-item" data-tags={post.data.tags.join(',')}>
+            <ArticleCard 
+              title={post.data.title}
+              description={post.data.description}
+              date={post.data.date.toLocaleDateString('zh-CN')}
+              tags={post.data.tags}
+              slug={post.slug}
+              aiAssisted={post.data.aiAssisted}
+              body={post.body}
+            />
+          </div>
+        ))}
+      </section>
+    </main>
+    
+    <footer class="border-t border-arcane-border py-10">
+      <div class="page-shell text-center font-mono text-[0.72rem] uppercase text-arcane-text-dim">
+        arcane.orion © 2026
+      </div>
+    </footer>
+  </div>
+</BaseLayout>
+
+<script>
+  const buttons = document.querySelectorAll('.tag-filter');
+  const posts = document.querySelectorAll('.post-item');
+  
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tag = btn.getAttribute('data-tag');
+      
+      buttons.forEach(b => {
+        b.classList.remove('border-arcane-math/40', 'bg-arcane-math/10', 'text-arcane-math');
+        b.classList.add('border-white/10', 'text-arcane-text-secondary');
+      });
+      btn.classList.remove('border-white/10', 'text-arcane-text-secondary');
+      btn.classList.add('border-arcane-math/40', 'bg-arcane-math/10', 'text-arcane-math');
+      
+      posts.forEach(post => {
+        const postTags = post.getAttribute('data-tags')?.split(',') || [];
+        post.style.display = tag === 'all' || postTags.includes(tag) ? 'block' : 'none';
+      });
+    });
+  });
+</script>

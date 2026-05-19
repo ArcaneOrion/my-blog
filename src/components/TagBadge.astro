@@ -1,0 +1,22 @@
+---
+interface Props {
+  tag: string;
+}
+
+const { tag } = Astro.props;
+import { domains } from '../lib/site';
+
+const domainClasses: Record<string, string> = {
+  Math: 'domain-math',
+  AI: 'domain-ai',
+  Quant: 'domain-quant',
+};
+
+const domain = tag in domains ? domains[tag as keyof typeof domains] : null;
+const domainClass = domainClasses[tag] || '';
+---
+
+<span class={`inline-flex items-center gap-2 border px-2.5 py-1 font-mono text-[0.66rem] uppercase tracking-normal ${domainClass} ${domain ? 'border-domain bg-domain-soft text-domain' : 'border-arcane-border text-arcane-text-secondary'}`} style="border-radius:6px">
+  <span>{domain?.glyph || '·'}</span>
+  <span>{tag}</span>
+</span>

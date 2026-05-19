@@ -1,0 +1,52 @@
+---
+import '../styles/global.css';
+import { pathFor } from '../lib/site';
+
+interface Props {
+  title: string;
+  description?: string;
+  image?: string;
+}
+
+const { 
+  title, 
+  description = "Arcane Orion's blog — Mathematics, AI, and Quantitative Thinking",
+  image = '/og-image.png'
+} = Astro.props;
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+const imageURL = image.startsWith('http') ? image : pathFor(image);
+---
+
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/svg+xml" href={pathFor('/favicon.svg')} />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Italiana&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet">
+  
+  <meta name="generator" content={Astro.generator} />
+  <title>{title}</title>
+  <meta name="description" content={description} />
+  
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content={canonicalURL} />
+  <meta property="og:title" content={title} />
+  <meta property="og:description" content={description} />
+  <meta property="og:image" content={imageURL} />
+  
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image" />
+  <meta property="twitter:url" content={canonicalURL} />
+  <meta property="twitter:title" content={title} />
+  <meta property="twitter:description" content={description} />
+  <meta property="twitter:image" content={imageURL} />
+</head>
+<body class="min-h-screen bg-arcane-bg text-arcane-text">
+  <slot />
+</body>
+</html>

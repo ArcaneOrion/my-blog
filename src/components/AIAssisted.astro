@@ -1,0 +1,16 @@
+---
+interface Props {
+  show?: boolean;
+}
+
+const { show = false } = Astro.props;
+---
+
+{show && (
+  <div class="mb-8 border border-arcane-border bg-white px-4 py-3" style="border-radius:8px">
+    <p class="font-mono text-[0.72rem] uppercase text-arcane-text-secondary">
+      <span class="mr-2 text-arcane-ai">λ</span>
+      本文部分内容经 AI 辅助生成，已标注。核心观点和框架由作者把控。
+    </p>
+  </div>
+)}

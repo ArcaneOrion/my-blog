@@ -1,0 +1,223 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import StructureField from '../components/StructureField.astro';
+import { pathFor } from '../lib/site';
+---
+
+<BaseLayout title="Arcane Orion — Structure Observatory">
+  <StructureField mode="math" />
+
+  <!-- sys-info：fixed 右上角，随 stage 更新 -->
+  <aside class="sys-info" data-sys-info aria-hidden="true">
+    <p data-sys-line="space">vector space · R²</p>
+    <p data-sys-line="status">status · observing</p>
+    <p data-sys-line="object" class="text-arcane-text-dim/60">— · —</p>
+  </aside>
+
+  <div class="relative z-10 page-fade-in">
+    <main class="relative">
+      <!-- Stage 1: Hero — 极大标题 + 大量留白 -->
+      <section class="page-shell home-stage home-stage--hero relative flex items-center" data-stage="entry">
+        <div class="max-w-5xl pt-10">
+          <p class="fade-in-delay-1 font-mono text-[0.62rem] uppercase tracking-[0.42em] text-arcane-text-dim">
+            mathematics · structure · mystery
+          </p>
+
+          <h1 class="fade-in-delay-2 mt-10 font-display text-[clamp(5.5rem,17vw,15rem)] font-normal leading-[0.82] tracking-[-0.03em] text-arcane-text">
+            arcane<span class="text-arcane-math">.</span><br />
+            orion
+          </h1>
+
+          <p class="fade-in-delay-3 mt-10 max-w-xl font-serif text-[1.1rem] leading-[1.9] text-arcane-text-secondary md:text-[1.18rem]">
+            <span class="italic" style="font-family: var(--font-italic); font-weight: 400;">没有结构，</span>
+            <span class="italic" style="font-family: var(--font-italic); font-weight: 400;">就没有理解。</span>
+          </p>
+
+          <div class="fade-in-delay-3 mt-14 flex items-center gap-6">
+            <a
+              href={pathFor('/blog')}
+              class="group inline-flex items-center gap-3 border-b border-arcane-text/20 pb-1 font-mono text-[0.72rem] uppercase tracking-[0.32em] text-arcane-text transition-colors hover:border-arcane-math hover:text-arcane-math"
+            >
+              <span class="text-base leading-none">○</span>
+              enter
+            </a>
+            <span class="font-mono text-[0.6rem] uppercase tracking-[0.32em] text-arcane-text-dim">scroll to descend</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stage 2: Circle — 极简符号 + 单行注脚 -->
+      <section class="page-shell home-stage flex items-center reveal" data-stage="circle">
+        <div class="w-full">
+          <div class="flex items-baseline gap-6">
+            <p class="stage-glyph font-display text-[clamp(8rem,18vw,16rem)] leading-none text-arcane-text/14">⊙</p>
+            <p class="font-mono text-[0.62rem] uppercase tracking-[0.36em] text-arcane-text-dim">i. circle</p>
+          </div>
+          <div class="mt-12 max-w-xl">
+            <p class="italic text-[1.2rem] leading-[1.85] text-arcane-text-secondary md:text-[1.3rem]" style="font-family: var(--font-italic);">
+              中心、半径、轨迹——
+              <br />
+              所有度量从一个点出发。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stage 3: Projection / Orion — 浪漫高点，星空在场 -->
+      <section class="page-shell home-stage flex items-center reveal" data-stage="projection">
+        <div class="grid w-full gap-12 lg:grid-cols-[1fr_0.72fr]">
+          <div class="self-end">
+            <p class="font-mono text-[0.62rem] uppercase tracking-[0.42em] text-arcane-math">ii. projection</p>
+            <p class="mt-6 italic text-[1.4rem] leading-[1.7] text-arcane-text md:text-[1.6rem]" style="font-family: var(--font-italic); font-weight: 400;">
+              S² 上的猎户，
+              <br />
+              落在平面上仍是猎户——
+              <br />
+              人类用线连星，
+              <br />
+              数学用距离重连。
+            </p>
+          </div>
+          <div class="self-end pb-2 lg:text-right">
+            <p class="font-mono text-[0.58rem] uppercase tracking-[0.32em] text-arcane-text-dim">
+              orion
+            </p>
+            <p class="mt-2 font-mono text-[0.58rem] uppercase tracking-[0.32em] text-arcane-text-dim">
+              projected from S² to R²
+            </p>
+            <p class="mt-6 font-mono text-[0.56rem] tracking-[0.16em] text-arcane-text-dim/80">
+              α Ori · β Ori · γ Ori<br />
+              δ Ori · ε Ori · ζ Ori<br />
+              κ Ori · λ Ori
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stage 4: Field — 流形 / 向量场 -->
+      <section class="page-shell home-stage flex items-center reveal" data-stage="field">
+        <div class="grid w-full gap-12 lg:grid-cols-[0.6fr_1fr]">
+          <div>
+            <p class="stage-glyph font-display text-[clamp(7rem,15vw,13rem)] leading-none text-arcane-text/14">∿</p>
+            <p class="mt-4 font-mono text-[0.62rem] uppercase tracking-[0.36em] text-arcane-text-dim">iii. field</p>
+          </div>
+          <div class="self-end">
+            <p class="italic text-[1.2rem] leading-[1.85] text-arcane-text-secondary md:text-[1.3rem]" style="font-family: var(--font-italic);">
+              点不再孤立。
+              <br />
+              每个位置都被赋予方向，
+              <br />
+              结构在场中演化。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stage 5: Closing — 极简收束 -->
+      <section class="page-shell home-stage flex items-end pb-32 reveal" data-stage="closing">
+        <div class="w-full">
+          <div class="mb-16 grid gap-4 md:grid-cols-3">
+            <p class="font-mono text-[0.62rem] uppercase tracking-[0.36em] text-arcane-text-dim">— · —</p>
+            <p class="text-center font-mono text-[0.62rem] uppercase tracking-[0.36em] text-arcane-text/60">end of entry</p>
+            <p class="text-right font-mono text-[0.62rem] uppercase tracking-[0.36em] text-arcane-text-dim">— · —</p>
+          </div>
+          <p class="text-center italic text-[1.15rem] leading-[1.9] text-arcane-text-secondary md:text-[1.25rem]" style="font-family: var(--font-italic);">
+            其余三个层面，
+            <br />
+            在各自的空间里展开。
+          </p>
+          <div class="mt-16 flex justify-center gap-12 font-mono text-[0.62rem] uppercase tracking-[0.36em]">
+            <a href={pathFor('/blog')} class="text-arcane-text-secondary transition-colors hover:text-arcane-math">math</a>
+            <span class="text-arcane-text-dim/40">ai</span>
+            <span class="text-arcane-text-dim/40">quant</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const stages = Array.from(document.querySelectorAll('[data-stage]'));
+    const reveals = Array.from(document.querySelectorAll('.reveal'));
+
+    // sys-info 内容映射
+    const sysInfoMap = {
+      entry: {
+        space: 'vector space · R²',
+        status: 'status · observing',
+        object: 'origin · 0',
+      },
+      circle: {
+        space: 'mapping · S¹',
+        status: 'status · tracing',
+        object: 'center · ⊙',
+      },
+      projection: {
+        space: 'projection · S² → R²',
+        status: 'status · resolving',
+        object: 'object · orion',
+      },
+      field: {
+        space: 'mapping · vector field',
+        status: 'status · flowing',
+        object: 'object · ∇φ',
+      },
+      closing: {
+        space: 'state · resolved',
+        status: 'status · descending',
+        object: '— · —',
+      },
+    };
+
+    function updateSysInfo(stage) {
+      const data = sysInfoMap[stage] || sysInfoMap.entry;
+      const root = document.querySelector('[data-sys-info]');
+      if (!root) return;
+      const lines = root.querySelectorAll('[data-sys-line]');
+      lines.forEach((el) => {
+        const key = el.getAttribute('data-sys-line');
+        if (key && data[key]) {
+          el.textContent = data[key];
+        }
+      });
+    }
+
+    const dispatchStage = (stage) => {
+      window.dispatchEvent(new CustomEvent('structure-stage', {
+        detail: { stage },
+      }));
+      updateSysInfo(stage);
+    };
+
+    if (stages.length > 0) {
+      dispatchStage(stages[0].getAttribute('data-stage') || 'entry');
+
+      const stageObserver = new IntersectionObserver((entries) => {
+        const active = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+        if (active) {
+          dispatchStage(active.target.getAttribute('data-stage') || 'entry');
+        }
+      }, {
+        threshold: [0.22, 0.4, 0.6, 0.78],
+      });
+
+      stages.forEach((stage) => stageObserver.observe(stage));
+    }
+
+    if (reveals.length > 0) {
+      const revealObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            revealObserver.unobserve(entry.target);
+          }
+        }
+      }, { threshold: 0.15 });
+
+      reveals.forEach((el) => revealObserver.observe(el));
+    }
+  </script>
+</BaseLayout>

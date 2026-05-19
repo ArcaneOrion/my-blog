@@ -1,0 +1,41 @@
+---
+interface Props {
+  current?: string;
+}
+
+const { current } = Astro.props;
+import { pathFor } from '../lib/site';
+
+const navItems = [
+  { label: 'Index', sub: '00', href: pathFor('/'), id: 'home' },
+  { label: 'Records', sub: '01', href: pathFor('/blog'), id: 'blog' },
+  { label: 'About', sub: '02', href: pathFor('/about'), id: 'about' },
+];
+---
+
+<nav class="fixed left-0 right-0 top-0 z-50 border-b border-white/70 bg-white/80 backdrop-blur-2xl">
+  <div class="page-shell flex h-16 items-center justify-between">
+    <a href={pathFor('/')} class="group flex items-center gap-3 font-mono text-sm uppercase text-arcane-text">
+      <span class="grid h-8 w-8 place-items-center border border-arcane-border bg-white text-arcane-math transition-colors group-hover:border-arcane-math group-hover:text-arcane-ai">∴</span>
+      <span class="hidden sm:inline tracking-[0.08em]">arcane.orion</span>
+    </a>
+    
+    <div class="flex items-center gap-2 sm:gap-4">
+      {navItems.map(item => (
+        <a 
+          href={item.href}
+          class={`group flex items-center gap-2 border px-3 py-2 font-mono text-[0.68rem] uppercase transition-colors ${
+            current === item.id 
+              ? 'border-arcane-math/20 bg-arcane-math/6 text-arcane-math' 
+              : 'border-transparent text-arcane-text-secondary hover:border-arcane-border hover:text-arcane-text'
+          }`}
+        >
+          <span class="text-arcane-text-dim">{item.sub}</span>
+          <span>{item.label}</span>
+        </a>
+      ))}
+    </div>
+  </div>
+</nav>
+
+<div class="h-16"></div>

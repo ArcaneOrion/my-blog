@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Astro build
+dist/
+.astro/
+
+# Nix / direnv
+.direnv/
+result
+result-*
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Codex agent marker
+.codex

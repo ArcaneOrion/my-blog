@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Structure & Logic</title>
+    <!-- 引入艺术衬线体与工业等宽字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300&family=IBM+Plex+Mono:wght@200;300&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #ffffff;
+            --primary: #1a1a1a;
+            --secondary: #888888;
+            --unit: 40px; /* 坐标系单位 */
+            --font-serif: 'Cormorant Garamond', serif;
+            --font-mono: 'IBM Plex Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--primary);
+            overflow-x: hidden;
+            font-family: var(--font-serif);
+        }
+
+        /* 坐标系背景层 */
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* 界面排版 */
+        .ui-layer {
+            position: relative;
+            z-index: 10;
+            min-height: 100vh;
+            padding: 60px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            pointer-events: none; /* 让鼠标穿透UI与背景几何交互 */
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .sys-info {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            line-height: 2;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--secondary);
+        }
+
+        /* 主标题：虚化渐变交互 */
+        .hero {
+            max-width: 600px;
+        }
+
+        .main-title {
+            font-size: clamp(2rem, 4vw, 3.5rem);
+            font-weight: 300;
+            line-height: 1.2;
+            margin-bottom: 20px;
+            pointer-events: auto;
+            /* 字体虚化渐变效果 */
+            transition: filter 1.2s cubic-bezier(0.2, 0, 0.2, 1), opacity 1.5s;
+            filter: blur(15px);
+            opacity: 0;
+        }
+
+        .main-title.loaded {
+            filter: blur(0px);
+            opacity: 1;
+        }
+
+        .main-title:hover {
+            filter: blur(4px); /* 交互时产生虚化感 */
+            transition: filter 0.4s;
+        }
+
+        .sub-text {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--secondary);
+            margin-top: 10px;
+            opacity: 0;
+            transition: 2s 1s;
+        }
+
+        .sub-text.loaded { opacity: 1; }
+
+        /* 文章链接区 */
+        .index-list {
+            margin-top: 50px;
+            pointer-events: auto;
+        }
+
+        .index-item {
+            display: block;
+            text-decoration: none;
+            color: var(--primary);
+            padding: 15px 0;
+            border-bottom: 0.5px solid rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            transition: 0.3s;
+        }
+
+        .index-item:hover {
+            opacity: 0.4;
+            transform: translateX(10px);
+        }
+
+        .index-num {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            margin-right: 30px;
+        }
+
+        .index-label {
+            font-size: 1.2rem;
+            letter-spacing: 1px;
+        }
+
+        footer {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 9px;
+            color: var(--secondary);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container">
+        <canvas id="geometryCanvas"></canvas>
+    </div>
+
+    <div class="ui-layer">
+        <header>
+            <div class="sys-info">
+                Vector Space: 2D_Euclidean<br>
+                Status: Mapping Structure...
+            </div>
+            <div class="sys-info" style="text-align: right;">
+                Structure is the <br>precondition of Cognition.
+            </div>
+        </header>
+
+        <main class="hero">
+            <h1 class="main-title" id="title">No structure,<br>No understanding.</h1>
+            <p class="sub-text" id="subtitle">The Geometry of Pure Reason</p>
+
+            <div class="index-list">
+                <a href="#" class="index-item">
+                    <span class="index-num">01</span>
+                    <span class="index-label">Euclidean Principles</span>
+                </a>
+                <a href="#" class="index-item">
+                    <span class="index-num">02</span>
+                    <span class="index-label">Topological Transformations</span>
+                </a>
+                <a href="#" class="index-item">
+                    <span class="index-num">03</span>
+                    <span class="index-label">Entropy in Logic</span>
+                </a>
+            </div>
+        </main>
+
+        <footer>
+            <div>FORMAL SYSTEM V.1.0</div>
+            <div>© 2024 ARCHIVE</div>
+        </footer>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('geometryCanvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let points = [];
+        let mouse = { x: -1000, y: -1000 };
+        const unit = 60; // 坐标系格栅大小
+
+        function init() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            points = [];
+            // 渐进式点生成逻辑：按序排列点
+            progressiveAddPoints(40);
+        }
+
+        function progressiveAddPoints(count) {
+            for(let i=0; i<count; i++) {
+                setTimeout(() => {
+                    points.push({
+                        x: Math.random() * width,
+                        y: Math.random() * height,
+                        originX: Math.random() * width,
+                        originY: Math.random() * height,
+                        vx: (Math.random() - 0.5) * 0.5,
+                        vy: (Math.random() - 0.5) * 0.5
+                    });
+                }, i * 50);
+            }
+        }
+
+        function drawGeometry() {
+            ctx.clearRect(0, 0, width, height);
+
+            // 1. 绘制数学坐标网格
+            ctx.beginPath();
+            ctx.strokeStyle = '#f2f2f2';
+            ctx.lineWidth = 1;
+            for(let x=0; x<width; x+=unit) {
+                ctx.moveTo(x, 0); ctx.lineTo(x, height);
+            }
+            for(let y=0; y<height; y+=unit) {
+                ctx.moveTo(0, y); ctx.lineTo(width, y);
+            }
+            ctx.stroke();
+
+            // 2. 绘制动态拓扑连接
+            points.forEach((p, i) => {
+                // 物理更新
+                p.x += p.vx;
+                p.y += p.vy;
+
+                // 边界回弹
+                if (p.x < 0 || p.x > width) p.vx *= -1;
+                if (p.y < 0 || p.y > height) p.vy *= -1;
+
+                // 鼠标交互：结构随感知改变
+                const distMouse = Math.hypot(p.x - mouse.x, p.y - mouse.y);
+                if (distMouse < 200) {
+                    p.x += (mouse.x - p.x) * 0.02;
+                    p.y += (mouse.y - p.y) * 0.02;
+                }
+
+                // 连接逻辑（数学意义上的近邻结构）
+                for (let j = i + 1; j < points.length; j++) {
+                    const p2 = points[j];
+                    const d = Math.hypot(p.x - p2.x, p.y - p2.y);
+                    if (d < 200) {
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.strokeStyle = `rgba(0,0,0, ${1 - d/200 - 0.7})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+
+                // 3. 绘制坐标标注 (Mathematical Significance)
+                if (i % 3 === 0) { // 抽样标注，保持简约
+                    ctx.font = '8px IBM Plex Mono';
+                    ctx.fillStyle = '#aaa';
+                    const label = `(${Math.floor(p.x)},${Math.floor(p.y)})`;
+                    ctx.fillText(label, p.x + 5, p.y - 5);
+                }
+
+                // 绘制节点点
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+                ctx.fillStyle = distMouse < 200 ? '#000' : '#ccc';
+                ctx.fill();
+            });
+
+            requestAnimationFrame(drawGeometry);
+        }
+
+        // 交互逻辑
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        window.addEventListener('resize', init);
+
+        // 启动序列
+        init();
+        drawGeometry();
+
+        // 页面文字渐进显现
+        window.onload = () => {
+            setTimeout(() => {
+                document.getElementById('title').classList.add('loaded');
+                document.getElementById('subtitle').classList.add('loaded');
+            }, 500);
+        };
+    </script>
+</body>
+</html>
