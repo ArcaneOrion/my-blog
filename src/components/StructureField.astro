@@ -307,8 +307,8 @@ const { mode = 'triad', compact = false } = Astro.props;
       const anchor = scene.getScreenAnchor ? scene.getScreenAnchor(sctx) : null;
       const stretch = scene.getStretch ? scene.getStretch(sctx) : 0;
       const elapsed = time - stageEnterTime;
-      // 进度：进入后 900ms 完成 0→1
-      const progress = Math.max(0, Math.min(1, elapsed / 900));
+      // 进度：进入后 480ms 完成 0→1
+      const progress = Math.max(0, Math.min(1, elapsed / 480));
       w.__structureSceneState = {
         stageId: scene.id,
         anchorX: anchor?.x ?? null,

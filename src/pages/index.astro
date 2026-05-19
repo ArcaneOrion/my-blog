@@ -55,7 +55,11 @@ const narrativeAlign: Record<string, 'left' | 'right' | 'center-bottom' | 'cente
             mathematics · structure · mystery
           </p>
 
-          <h1 class="fade-in-delay-2 mt-10 font-display text-[clamp(5.5rem,17vw,15rem)] font-normal leading-[0.82] tracking-[-0.03em] text-arcane-text">
+          <h1
+            class="narrative-hero mt-10 font-display text-[clamp(5.5rem,17vw,15rem)] font-normal leading-[0.82] text-arcane-text"
+            data-narrative-scene="entry"
+            data-hero-title
+          >
             Arcane<span class="text-arcane-math">.</span><br />
             Orion
           </h1>
@@ -156,7 +160,7 @@ const narrativeAlign: Record<string, 'left' | 'right' | 'center-bottom' | 'cente
           dispatchStage(active.target.getAttribute('data-stage') || scenes[0].id);
         }
       }, {
-        threshold: [0.22, 0.4, 0.6, 0.78],
+        threshold: [0.08, 0.25, 0.5],
       });
 
       stages.forEach((stage) => stageObserver.observe(stage));
@@ -167,5 +171,31 @@ const narrativeAlign: Record<string, 'left' | 'right' | 'center-bottom' | 'cente
 
     // 诗句 narrative 层：锚定到 canvas scene 几何
     initNarrativeBind();
+
+    // hero 大字 bbox 测量,供 entry scene drawLayers 在大字附近画装饰
+    const heroTitle = document.querySelector<HTMLElement>('[data-hero-title]');
+    function updateHeroBox() {
+      if (!heroTitle) {
+        (window as any).__heroBox = null;
+        return;
+      }
+      const rect = heroTitle.getBoundingClientRect();
+      // 估算大字 "." 位置:第一行 "Arcane." 末尾,占大字 width 约 0.38-0.42,y 约 line 1 baseline
+      // 大字 2 行 leading 0.82,第一行 baseline 约 height * 0.42
+      (window as any).__heroBox = {
+        x: rect.left,
+        y: rect.top,
+        w: rect.width,
+        h: rect.height,
+        baselineY: rect.top + rect.height * 0.92,
+        dotX: rect.left + rect.width * 0.40,
+        dotY: rect.top + rect.height * 0.42,
+      };
+    }
+    updateHeroBox();
+    window.addEventListener('resize', updateHeroBox);
+    if (heroTitle && typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(updateHeroBox).observe(heroTitle);
+    }
   </script>
 </BaseLayout>

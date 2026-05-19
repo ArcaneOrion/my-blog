@@ -28,6 +28,10 @@ export function initNarrativeBind(): () => void {
   );
   if (containers.length === 0) return () => {};
 
+  // 每个容器的"显示进度",lerp 跟随 target,避免 scene 切换时 transform 突跳
+  const displayedP = new WeakMap<HTMLElement, number>();
+  const LERP = 0.15;
+
   let rafId = 0;
   let stopped = false;
 
@@ -41,16 +45,23 @@ export function initNarrativeBind(): () => void {
     for (const el of containers) {
       const sceneId = el.dataset.narrativeScene;
       const active = sceneId === state.stageId;
+      const isHero = el.classList.contains('narrative-hero');
 
-      if (active && state.anchorX !== null && state.anchorY !== null) {
-        el.style.setProperty('--anchor-x', `${state.anchorX}px`);
-        el.style.setProperty('--anchor-y', `${state.anchorY}px`);
-        el.style.setProperty('--narrative-p', state.progress.toFixed(3));
-        el.style.setProperty('--narrative-stretch', state.stretch.toFixed(3));
+      const targetP = active ? state.progress : 0;
+      const current = displayedP.get(el) ?? 0;
+      const next = current + (targetP - current) * LERP;
+      displayedP.set(el, next);
+
+      el.style.setProperty('--narrative-p', next.toFixed(3));
+      el.style.setProperty('--narrative-stretch', state.stretch.toFixed(3));
+
+      if (active) {
+        if (!isHero && state.anchorX !== null && state.anchorY !== null) {
+          el.style.setProperty('--anchor-x', `${state.anchorX}px`);
+          el.style.setProperty('--anchor-y', `${state.anchorY}px`);
+        }
         el.classList.add('is-narrative-active');
       } else {
-        // 非当前 scene：进度归零，容器淡出
-        el.style.setProperty('--narrative-p', '0');
         el.classList.remove('is-narrative-active');
       }
     }

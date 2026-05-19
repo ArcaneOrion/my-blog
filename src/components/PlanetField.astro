@@ -1,0 +1,537 @@
+---
+// PlanetField:五星球大厅 canvas
+// 数学语义:五个空间作为天体,各自轨道、各自结构
+// 三个技术星球(ai/math/quant)作等边三角,两个人文星球(self/journal)作外圈卫星
+---
+
+<div class="planet-field" data-planet-field>
+  <canvas data-planet-canvas></canvas>
+  <div class="planet-field__vignette"></div>
+  <div class="planet-label" data-planet-label aria-live="polite"></div>
+</div>
+
+<script>
+  type ColorTuple = [number, number, number];
+
+  interface Planet {
+    id: string;
+    label: string;
+    sub: string;
+    glyph: string;
+    color: ColorTuple;
+    href: string;
+    orbitRadiusFactor: number;
+    orbitAngle: number;
+    orbitSpeed: number;
+    sizeFactor: number;
+    layer: 'core' | 'satellite';
+    drawIcon: (ctx: CanvasRenderingContext2D, x: number, y: number, r: number, time: number, alpha: number) => void;
+  }
+
+  const palette = {
+    math:    [29, 78, 216] as ColorTuple,
+    ai:      [190, 24, 93] as ColorTuple,
+    quant:   [15, 118, 110] as ColorTuple,
+    self:    [124, 58, 237] as ColorTuple,
+    journal: [176, 137, 64] as ColorTuple,
+    ink:     [23, 24, 28] as ColorTuple,
+  };
+
+  function rgba(c: ColorTuple, a: number): string {
+    return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`;
+  }
+
+  function drawMathIcon(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, _t: number, alpha: number) {
+    // 矩阵网格 3x3
+    ctx.strokeStyle = rgba(palette.math, 0.62 * alpha);
+    ctx.lineWidth = 1;
+    const step = r * 0.45;
+    for (let i = -1; i <= 1; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(x + i * step, y - r * 0.55);
+      ctx.lineTo(x + i * step, y + r * 0.55);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - r * 0.55, y + i * step);
+      ctx.lineTo(x + r * 0.55, y + i * step);
+      ctx.stroke();
+    }
+  }
+
+  function drawAiIcon(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, t: number, alpha: number) {
+    // 节点图:3 节点环 + 连线
+    const nodes: Array<{ x: number; y: number }> = [];
+    const wobble = Math.sin(t * 0.0008) * 0.08;
+    for (let i = 0; i < 3; i += 1) {
+      const a = (i / 3) * Math.PI * 2 - Math.PI / 2 + wobble;
+      nodes.push({ x: x + Math.cos(a) * r * 0.55, y: y + Math.sin(a) * r * 0.55 });
+    }
+    ctx.strokeStyle = rgba(palette.ai, 0.5 * alpha);
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i += 1) {
+      const a = nodes[i];
+      const b = nodes[(i + 1) % 3];
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = rgba(palette.ai, 0.78 * alpha);
+    for (const n of nodes) {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawQuantIcon(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, _t: number, alpha: number) {
+    // 钟形曲线
+    ctx.strokeStyle = rgba(palette.quant, 0.62 * alpha);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    const baseY = y + r * 0.5;
+    const span = r * 0.7;
+    for (let i = -span; i <= span; i += 2) {
+      const norm = i / (span * 0.4);
+      const peak = Math.exp(-0.5 * norm * norm);
+      const px = x + i;
+      const py = baseY - peak * r * 0.7;
+      if (i === -span) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    // 基线
+    ctx.strokeStyle = rgba(palette.quant, 0.25 * alpha);
+    ctx.beginPath();
+    ctx.moveTo(x - span, baseY);
+    ctx.lineTo(x + span, baseY);
+    ctx.stroke();
+  }
+
+  function drawSelfIcon(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, _t: number, alpha: number) {
+    // 坐标十字 + 单点
+    ctx.strokeStyle = rgba(palette.self, 0.4 * alpha);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x - r * 0.55, y);
+    ctx.lineTo(x + r * 0.55, y);
+    ctx.moveTo(x, y - r * 0.55);
+    ctx.lineTo(x, y + r * 0.55);
+    ctx.stroke();
+    ctx.fillStyle = rgba(palette.self, 0.85 * alpha);
+    ctx.beginPath();
+    ctx.arc(x + r * 0.22, y - r * 0.18, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawJournalIcon(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, t: number, alpha: number) {
+    // 5 个不规则散点,缓慢漂移
+    const positions: Array<[number, number]> = [
+      [-0.4, -0.3], [0.3, -0.4], [-0.1, 0.0], [0.4, 0.25], [-0.35, 0.4],
+    ];
+    ctx.fillStyle = rgba(palette.journal, 0.7 * alpha);
+    positions.forEach((p, i) => {
+      const drift = Math.sin(t * 0.0006 + i * 1.7) * 1.5;
+      ctx.beginPath();
+      ctx.arc(x + p[0] * r * 0.7, y + p[1] * r * 0.7 + drift, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    // 一根连接两个点的纤细线
+    ctx.strokeStyle = rgba(palette.journal, 0.32 * alpha);
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(x + positions[0][0] * r * 0.7, y + positions[0][1] * r * 0.7);
+    ctx.lineTo(x + positions[2][0] * r * 0.7, y + positions[2][1] * r * 0.7);
+    ctx.stroke();
+  }
+
+  function makePlanetField(root: HTMLElement) {
+    if (root.dataset.planetReady === 'true') return;
+    root.dataset.planetReady = 'true';
+
+    const canvas = root.querySelector<HTMLCanvasElement>('[data-planet-canvas]');
+    const labelEl = root.querySelector<HTMLDivElement>('[data-planet-label]');
+    if (!canvas || !labelEl) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    let pointer = { x: 0, y: 0, active: false };
+    let frame = 0;
+    let lastFrameTime = 0;
+    const targetFPS = 42;
+    const frameInterval = 1000 / targetFPS;
+    let paused = false;
+    let hoveredId: string | null = null;
+
+    const root3 = (window as any).__BLOG_BASE__ || '';
+    const url = (p: string) => `${root3}${p}`.replace(/\/+/g, '/');
+
+    const planets: Planet[] = [
+      {
+        id: 'math', label: 'Mathematics', sub: 'space · structure', glyph: '∂',
+        color: palette.math, href: url('/math/'),
+        orbitRadiusFactor: 0.24, orbitAngle: -Math.PI / 2, orbitSpeed: 0.00010,
+        sizeFactor: 0.075, layer: 'core', drawIcon: drawMathIcon,
+      },
+      {
+        id: 'ai', label: 'Artificial Intelligence', sub: 'agency · context', glyph: 'λ',
+        color: palette.ai, href: url('/ai/'),
+        orbitRadiusFactor: 0.24, orbitAngle: -Math.PI / 2 + (2 * Math.PI) / 3, orbitSpeed: 0.00010,
+        sizeFactor: 0.075, layer: 'core', drawIcon: drawAiIcon,
+      },
+      {
+        id: 'quant', label: 'Quant', sub: 'signal · feedback', glyph: 'σ',
+        color: palette.quant, href: url('/quant/'),
+        orbitRadiusFactor: 0.24, orbitAngle: -Math.PI / 2 + (4 * Math.PI) / 3, orbitSpeed: 0.00010,
+        sizeFactor: 0.075, layer: 'core', drawIcon: drawQuantIcon,
+      },
+      {
+        id: 'self', label: 'Self', sub: 'observer · origin', glyph: '·',
+        color: palette.self, href: url('/about/'),
+        orbitRadiusFactor: 0.42, orbitAngle: Math.PI / 6, orbitSpeed: 0.00006,
+        sizeFactor: 0.055, layer: 'satellite', drawIcon: drawSelfIcon,
+      },
+      {
+        id: 'journal', label: 'Journal', sub: 'drift · note', glyph: '∿',
+        color: palette.journal, href: url('/journal/'),
+        orbitRadiusFactor: 0.42, orbitAngle: Math.PI + Math.PI / 5, orbitSpeed: 0.00006,
+        sizeFactor: 0.055, layer: 'satellite', drawIcon: drawJournalIcon,
+      },
+    ];
+
+    function resize() {
+      const box = root.getBoundingClientRect();
+      width = Math.max(1, box.width);
+      height = Math.max(1, box.height);
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas!.width = Math.floor(width * dpr);
+      canvas!.height = Math.floor(height * dpr);
+      canvas!.style.width = `${width}px`;
+      canvas!.style.height = `${height}px`;
+      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function planetCenter(p: Planet, time: number) {
+      const cx = width * 0.5;
+      const cy = height * 0.5;
+      const base = Math.min(width, height);
+      const r = base * p.orbitRadiusFactor;
+      const angle = p.orbitAngle + time * p.orbitSpeed;
+      let px = cx + Math.cos(angle) * r;
+      let py = cy + Math.sin(angle) * r;
+      // 鼠标接近时星球被轻微吸引
+      if (pointer.active && hoveredId === p.id) {
+        px += (pointer.x - px) * 0.08;
+        py += (pointer.y - py) * 0.08;
+      }
+      return { x: px, y: py, r: base * p.sizeFactor };
+    }
+
+    function drawBackground(time: number) {
+      // 极淡的轨道环
+      const cx = width * 0.5;
+      const cy = height * 0.5;
+      const base = Math.min(width, height);
+      ctx!.strokeStyle = rgba(palette.ink, 0.05);
+      ctx!.lineWidth = 1;
+      // 主轨道
+      ctx!.beginPath();
+      ctx!.arc(cx, cy, base * 0.24, 0, Math.PI * 2);
+      ctx!.stroke();
+      // 外轨道
+      ctx!.strokeStyle = rgba(palette.ink, 0.04);
+      ctx!.beginPath();
+      ctx!.arc(cx, cy, base * 0.42, 0, Math.PI * 2);
+      ctx!.stroke();
+
+      // 中心标识(很淡)
+      ctx!.fillStyle = rgba(palette.ink, 0.18);
+      ctx!.beginPath();
+      ctx!.arc(cx, cy, 2, 0, Math.PI * 2);
+      ctx!.fill();
+      // 远处淡淡的小点点(星空感)
+      const seedRand = (i: number) => {
+        const s = Math.sin(i * 999.13) * 10000;
+        return s - Math.floor(s);
+      };
+      ctx!.fillStyle = rgba(palette.ink, 0.10);
+      for (let i = 0; i < 80; i += 1) {
+        const sx = seedRand(i * 2) * width;
+        const sy = seedRand(i * 2 + 1) * height;
+        const twinkle = 0.5 + 0.5 * Math.sin(time * 0.0008 + i);
+        ctx!.globalAlpha = 0.1 + twinkle * 0.18;
+        ctx!.beginPath();
+        ctx!.arc(sx, sy, 0.7, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+      ctx!.globalAlpha = 1;
+    }
+
+    function drawPlanet(p: Planet, time: number) {
+      const { x, y, r } = planetCenter(p, time);
+      const isHovered = hoveredId === p.id;
+      const haloAlpha = isHovered ? 0.42 : 0.16;
+
+      // halo
+      const grad = ctx!.createRadialGradient(x, y, r * 0.6, x, y, r * 2.4);
+      grad.addColorStop(0, rgba(p.color, haloAlpha));
+      grad.addColorStop(1, rgba(p.color, 0));
+      ctx!.fillStyle = grad;
+      ctx!.beginPath();
+      ctx!.arc(x, y, r * 2.4, 0, Math.PI * 2);
+      ctx!.fill();
+
+      // 星球体(填充很淡 + 边线)
+      ctx!.fillStyle = 'rgba(251, 250, 247, 0.92)';
+      ctx!.beginPath();
+      ctx!.arc(x, y, r, 0, Math.PI * 2);
+      ctx!.fill();
+
+      ctx!.strokeStyle = rgba(p.color, isHovered ? 0.78 : 0.5);
+      ctx!.lineWidth = 1.2;
+      ctx!.beginPath();
+      ctx!.arc(x, y, r, 0, Math.PI * 2);
+      ctx!.stroke();
+
+      // 内部 icon
+      ctx!.save();
+      ctx!.beginPath();
+      ctx!.arc(x, y, r * 0.88, 0, Math.PI * 2);
+      ctx!.clip();
+      p.drawIcon(ctx!, x, y, r * 0.7, time, 0.85);
+      ctx!.restore();
+
+      // glyph 在星球外下方
+      ctx!.font = `${isHovered ? '600' : '400'} 14px "Italiana", "Cormorant Garamond", serif`;
+      ctx!.fillStyle = rgba(p.color, isHovered ? 0.9 : 0.55);
+      ctx!.textAlign = 'center';
+      ctx!.fillText(p.glyph, x, y + r + 22);
+      ctx!.textAlign = 'start';
+    }
+
+    function hitTest(px: number, py: number, time: number): Planet | null {
+      let hit: Planet | null = null;
+      let bestDist = Infinity;
+      for (const p of planets) {
+        const c = planetCenter(p, time);
+        const d = Math.hypot(px - c.x, py - c.y);
+        if (d < c.r * 1.4 && d < bestDist) {
+          bestDist = d;
+          hit = p;
+        }
+      }
+      return hit;
+    }
+
+    function updateLabel(time: number) {
+      if (!hoveredId) {
+        labelEl!.classList.remove('is-visible');
+        return;
+      }
+      const p = planets.find((q) => q.id === hoveredId);
+      if (!p) return;
+      const c = planetCenter(p, time);
+      labelEl!.style.setProperty('--lx', `${c.x}px`);
+      labelEl!.style.setProperty('--ly', `${c.y - c.r - 42}px`);
+      labelEl!.style.setProperty('--lc', rgba(p.color, 0.95));
+      labelEl!.innerHTML = `
+        <span class="planet-label__main">${p.label}</span>
+        <span class="planet-label__sub">${p.sub}</span>
+      `;
+      labelEl!.classList.add('is-visible');
+    }
+
+    function render(time: number) {
+      frame = requestAnimationFrame(render);
+      if (paused || document.hidden) return;
+      if (time - lastFrameTime < frameInterval) return;
+      lastFrameTime = time;
+
+      ctx!.clearRect(0, 0, width, height);
+      drawBackground(time);
+
+      // 卫星先画(在主行星下层)
+      for (const p of planets) {
+        if (p.layer === 'satellite') drawPlanet(p, time);
+      }
+      for (const p of planets) {
+        if (p.layer === 'core') drawPlanet(p, time);
+      }
+      updateLabel(time);
+    }
+
+    function onPointerMove(event: PointerEvent) {
+      const rect = root.getBoundingClientRect();
+      pointer = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        active: true,
+      };
+      const hit = hitTest(pointer.x, pointer.y, performance.now());
+      hoveredId = hit ? hit.id : null;
+      root.style.cursor = hit ? 'pointer' : '';
+    }
+
+    function onPointerLeave() {
+      pointer.active = false;
+      hoveredId = null;
+      root.style.cursor = '';
+    }
+
+    function onClick() {
+      if (!hoveredId) return;
+      const planet = planets.find((p) => p.id === hoveredId);
+      if (!planet) return;
+      // 用同一组 transition 库;但 transition 库期望从 gateway 触发(有圆环坐标)
+      // 这里:用星球中心作为收束点,触发一个简化跳转
+      const c = planetCenter(planet, performance.now());
+      launchPlanetTransition(c.x, c.y, planet.color, planet.href);
+    }
+
+    function launchPlanetTransition(cx: number, cy: number, color: ColorTuple, href: string) {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = `
+        position: fixed; inset: 0; z-index: 100;
+        pointer-events: none; overflow: hidden;
+      `;
+      document.body.appendChild(overlay);
+
+      const ring = document.createElement('div');
+      Object.assign(ring.style, {
+        position: 'absolute',
+        left: `${cx - 30}px`,
+        top: `${cy - 30}px`,
+        width: '60px',
+        height: '60px',
+        borderRadius: '50%',
+        border: `1.4px solid ${rgba(color, 0.65)}`,
+        transform: 'scale(1)',
+        transition: 'transform 900ms cubic-bezier(0.65, 0, 0.35, 1), opacity 600ms ease 300ms, border-color 800ms ease',
+      });
+      overlay.appendChild(ring);
+
+      const fade = document.createElement('div');
+      Object.assign(fade.style, {
+        position: 'absolute',
+        inset: '0',
+        background: 'rgba(251, 250, 247, 0)',
+        transition: 'background 900ms cubic-bezier(0.7, 0, 0.84, 0)',
+      });
+      overlay.appendChild(fade);
+
+      requestAnimationFrame(() => {
+        ring.style.transform = 'scale(14)';
+        ring.style.opacity = '0';
+        ring.style.borderColor = rgba(color, 0.05);
+        fade.style.background = 'rgba(251, 250, 247, 0.96)';
+      });
+
+      setTimeout(() => {
+        fade.style.transition = 'background 180ms linear';
+        fade.style.background = 'rgba(251, 250, 247, 1)';
+      }, 900);
+      setTimeout(() => {
+        window.location.href = href;
+      }, 1100);
+    }
+
+    function onVisibility() {
+      paused = document.hidden;
+    }
+
+    resize();
+    window.addEventListener('resize', resize);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerleave', onPointerLeave);
+    window.addEventListener('click', onClick);
+    document.addEventListener('visibilitychange', onVisibility);
+    frame = requestAnimationFrame(render);
+
+    document.addEventListener('astro:before-swap', () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerleave', onPointerLeave);
+      window.removeEventListener('click', onClick);
+      document.removeEventListener('visibilitychange', onVisibility);
+    }, { once: true });
+  }
+
+  const roots = document.querySelectorAll<HTMLElement>('[data-planet-field]');
+  roots.forEach(makePlanetField);
+</script>
+
+<style>
+  .planet-field {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(29, 78, 216, 0.04), transparent 30rem),
+      linear-gradient(180deg, rgba(251, 250, 247, 0.6), rgba(245, 242, 235, 0.7));
+    opacity: 0;
+    animation: planet-field-fade 1.2s ease 200ms both;
+  }
+
+  .planet-field canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .planet-field__vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 50% 50%, transparent 50%, rgba(251, 250, 247, 0.3) 100%);
+  }
+
+  .planet-label {
+    position: fixed;
+    left: 0;
+    top: 0;
+    --lx: 50%;
+    --ly: 50%;
+    --lc: rgba(23, 24, 28, 0.7);
+    transform: translate(var(--lx), var(--ly)) translate(-50%, -100%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 200ms ease, transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    text-align: center;
+    color: var(--lc);
+    z-index: 8;
+  }
+
+  .planet-label.is-visible {
+    opacity: 1;
+  }
+
+  .planet-label__main {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    line-height: 1.1;
+    letter-spacing: 0.01em;
+  }
+
+  .planet-label__sub {
+    display: block;
+    margin-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: rgba(23, 24, 28, 0.45);
+  }
+
+  @keyframes planet-field-fade {
+    from { opacity: 0; transform: scale(1.02); }
+    to { opacity: 1; transform: scale(1); }
+  }
+</style>

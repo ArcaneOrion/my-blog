@@ -1,15 +1,27 @@
-// Gateway scene：博客入口
-// 数学语义：所有结构收束于一个圆环——门
+// Gateway scene：博客入口 — 滚动终点站
+// 数学语义：所有结构收束于一个圆环 — 门;
+//          周围 5 个对应五星球的小卫星点(暗示门后是五个空间);
+//          外层一圈淡矩形门框,强化"入口"感
 // 点击圆环（半径 1.2x 范围内）触发随机过渡动画
 
 import type { SceneSpec, SceneCtx } from './types';
 import { rgba } from './types';
 import { pickTransition } from '../transitions';
 
+// 五星球的颜色,用于卫星点
+const PLANET_COLORS: Array<[number, number, number]> = [
+  [29, 78, 216],   // math
+  [190, 24, 93],   // ai
+  [15, 118, 110],  // quant
+  [124, 58, 237],  // self
+  [176, 137, 64],  // journal
+];
+
 function anchorCenter(sctx: SceneCtx): { cx: number; cy: number; radius: number } {
   const cx = sctx.width * 0.5;
   const cy = sctx.height * 0.5;
-  const radius = Math.min(sctx.width, sctx.height) * 0.18;
+  // 升级:半径从 0.18 → 0.24,大幅提升视觉重量
+  const radius = Math.min(sctx.width, sctx.height) * 0.24;
   return { cx, cy, radius };
 }
 
@@ -33,20 +45,21 @@ export const gatewayScene: SceneSpec = {
   sysInfo: {
     space: 'state · convergent',
     status: 'status · ready',
-    object: 'object · gateway',
+    object: 'object · portal',
   },
   copy: {
     glyph: '○',
-    sectionLabel: 'iv. enter',
-    italicCopy: '其余三个层面，\n在各自的空间里展开。\n\n推门进入。',
-    sideNote: 'math · ai · quant',
+    // 去掉 "iv." 编号——脱离 i/ii/iii 数学序列,作为独立的"入口"终点
+    sectionLabel: 'portal',
+    italicCopy: '五个空间，\n各自的轨道。\n\n推门进入。',
+    sideNote: 'ai · math · quant\nself · journal',
   },
 
   cursor: 'pointer',
 
   getScreenAnchor: (sctx) => ({
     x: sctx.width * 0.5,
-    y: sctx.height * 0.22,
+    y: sctx.height * 0.18,
   }),
 
   hitTest: (x, y, sctx) => isInHitZone(x, y, sctx),
@@ -54,7 +67,7 @@ export const gatewayScene: SceneSpec = {
   onClick: (sctx) => {
     const { cx, cy, radius } = anchorCenter(sctx);
     const root = (sctx as any).blogRoot ?? '';
-    const targetUrl = `${root}/blog`.replace(/\/+/g, '/');
+    const targetUrl = `${root}/observatory`.replace(/\/+/g, '/');
     const transition = pickTransition();
     transition.play({
       center: { x: cx, y: cy },
@@ -99,51 +112,122 @@ export const gatewayScene: SceneSpec = {
     const gapAngle = time * 0.00018;
     const gapWidth = 0.45;
 
-    // 主圆环
-    ctx.strokeStyle = rgba(color, 0.36 + hover * 0.3);
-    ctx.lineWidth = 1.4;
+    // === 1. 门框:外层一个虚线矩形,暗示"门" ===
+    const frameSize = dynRadius * 2.4;
+    const frameAlpha = 0.18 + hover * 0.18;
+    ctx.strokeStyle = rgba(ink, frameAlpha);
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 8]);
+    ctx.strokeRect(cx - frameSize / 2, cy - frameSize / 2, frameSize, frameSize);
+    ctx.setLineDash([]);
+
+    // 门框四角小标记(强化"门"几何)
+    const cornerSize = 10;
+    ctx.strokeStyle = rgba(color, 0.45 + hover * 0.3);
+    ctx.lineWidth = 1.2;
+    const corners: Array<[number, number, number, number]> = [
+      [-frameSize / 2, -frameSize / 2, 1, 1],
+      [frameSize / 2, -frameSize / 2, -1, 1],
+      [-frameSize / 2, frameSize / 2, 1, -1],
+      [frameSize / 2, frameSize / 2, -1, -1],
+    ];
+    for (const [ox, oy, dx, dy] of corners) {
+      const px = cx + ox;
+      const py = cy + oy;
+      ctx.beginPath();
+      ctx.moveTo(px, py + dy * cornerSize);
+      ctx.lineTo(px, py);
+      ctx.lineTo(px + dx * cornerSize, py);
+      ctx.stroke();
+    }
+
+    // === 2. 五颗卫星点:对应五星球,绕主圆环外圈缓慢公转 ===
+    const satRadius = dynRadius * 1.55;
+    const orbitSpeed = 0.00008;
+    for (let i = 0; i < 5; i += 1) {
+      const baseAngle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+      const angle = baseAngle + time * orbitSpeed;
+      const sx = cx + Math.cos(angle) * satRadius;
+      const sy = cy + Math.sin(angle) * satRadius;
+
+      const sc = PLANET_COLORS[i];
+      // 光晕
+      const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, 12);
+      grad.addColorStop(0, rgba(sc, 0.45 + hover * 0.25));
+      grad.addColorStop(1, rgba(sc, 0));
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 12, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 卫星本体
+      ctx.fillStyle = rgba(sc, 0.78);
+      ctx.beginPath();
+      ctx.arc(sx, sy, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 从卫星向圆环画一根细线(只在 hover 时显示)
+      if (hover > 0.15) {
+        const innerX = cx + Math.cos(angle) * dynRadius;
+        const innerY = cy + Math.sin(angle) * dynRadius;
+        ctx.strokeStyle = rgba(sc, hover * 0.35);
+        ctx.lineWidth = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(innerX, innerY);
+        ctx.stroke();
+      }
+    }
+
+    // === 3. 主圆环 ===
+    ctx.strokeStyle = rgba(color, 0.42 + hover * 0.36);
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.arc(cx, cy, dynRadius, gapAngle + gapWidth / 2, gapAngle - gapWidth / 2 + Math.PI * 2);
     ctx.stroke();
 
+    // hover 时圆环外多一圈光环
     if (hover > 0) {
-      ctx.strokeStyle = rgba(color, hover * 0.22);
+      ctx.strokeStyle = rgba(color, hover * 0.28);
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(cx, cy, dynRadius * 1.35, 0, Math.PI * 2);
+      ctx.arc(cx, cy, dynRadius * 1.18, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.strokeStyle = rgba(color, hover * 0.14);
+      ctx.strokeStyle = rgba(color, hover * 0.16);
       ctx.beginPath();
-      ctx.arc(cx, cy, dynRadius * 0.7, 0, Math.PI * 2);
+      ctx.arc(cx, cy, dynRadius * 0.78, 0, Math.PI * 2);
       ctx.stroke();
     }
 
+    // === 4. 圆环缺口两端的标记点 ===
     const markRadius = dynRadius;
     const markA = gapAngle + gapWidth / 2;
     const markB = gapAngle - gapWidth / 2;
-    ctx.fillStyle = rgba(color, 0.6);
+    ctx.fillStyle = rgba(color, 0.72);
     for (const a of [markA, markB]) {
       const px = cx + Math.cos(a) * markRadius;
       const py = cy + Math.sin(a) * markRadius;
       ctx.beginPath();
-      ctx.arc(px, py, 3, 0, Math.PI * 2);
+      ctx.arc(px, py, 3.2, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    ctx.fillStyle = rgba(ink, 0.5 + hover * 0.3);
+    // === 5. 中心点 ===
+    ctx.fillStyle = rgba(ink, 0.55 + hover * 0.3);
     ctx.beginPath();
-    ctx.arc(cx, cy, 2 + hover * 1.5, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 2.2 + hover * 1.5, 0, Math.PI * 2);
     ctx.fill();
 
-    const beam = 0.06 + hover * 0.22;
+    // === 6. 中心放射线(hover 增强) ===
+    const beam = 0.08 + hover * 0.26;
     ctx.strokeStyle = rgba(color, beam);
     ctx.lineWidth = 1;
     for (let i = 0; i < 4; i += 1) {
       const a = (i / 4) * Math.PI * 2 + time * 0.0001;
       ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(a) * (dynRadius * 0.4), cy + Math.sin(a) * (dynRadius * 0.4));
-      ctx.lineTo(cx + Math.cos(a) * (dynRadius * 0.9), cy + Math.sin(a) * (dynRadius * 0.9));
+      ctx.moveTo(cx + Math.cos(a) * (dynRadius * 0.45), cy + Math.sin(a) * (dynRadius * 0.45));
+      ctx.lineTo(cx + Math.cos(a) * (dynRadius * 0.85), cy + Math.sin(a) * (dynRadius * 0.85));
       ctx.stroke();
     }
   },
@@ -152,19 +236,23 @@ export const gatewayScene: SceneSpec = {
     const { color, ink } = sctx;
     const { cx, cy, radius } = anchorCenter(sctx);
     const hover = hoverFactor(sctx);
+    const dynRadius = radius * (1 + hover * 0.35);
 
-    ctx.font = 'italic 12px "Cormorant Garamond", serif';
-    ctx.fillStyle = rgba(ink, 0.5 + hover * 0.3);
+    // "portal · 5" 在圆环下方
+    ctx.font = 'italic 14px "Cormorant Garamond", serif';
+    ctx.fillStyle = rgba(ink, 0.58 + hover * 0.3);
     ctx.textAlign = 'center';
-    ctx.fillText('enter', cx, cy + radius * (1 + hover * 0.35) + 26);
-    ctx.textAlign = 'start';
+    ctx.fillText('portal', cx, cy + dynRadius + 32);
+
+    ctx.font = '9px JetBrains Mono, monospace';
+    ctx.fillStyle = rgba(ink, 0.35 + hover * 0.3);
+    ctx.fillText('5 · spaces · ahead', cx, cy + dynRadius + 50);
 
     if (hover > 0.3) {
-      ctx.font = '8px JetBrains Mono, monospace';
-      ctx.fillStyle = rgba(color, hover * 0.6);
-      ctx.textAlign = 'center';
-      ctx.fillText('door · open · click', cx, cy + radius * (1 + hover * 0.35) + 42);
-      ctx.textAlign = 'start';
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.fillStyle = rgba(color, hover * 0.7);
+      ctx.fillText('press · to · cross', cx, cy + dynRadius + 68);
     }
+    ctx.textAlign = 'start';
   },
 };
