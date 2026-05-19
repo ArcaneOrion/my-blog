@@ -18,141 +18,78 @@ const { mode = 'triad', compact = false } = Astro.props;
 </div>
 
 <script>
-  const fields = document.querySelectorAll('[data-structure-field]');
+  import { scenes, scenesById } from '../scenes';
+  import type { SceneSpec, PointState, SceneCtx, ColorTuple } from '../scenes/types';
+  import { rgba } from '../scenes/types';
 
-  const palette = {
+  const palette: { math: ColorTuple; ai: ColorTuple; quant: ColorTuple; ink: ColorTuple } = {
     math: [29, 78, 216],
     ai: [190, 24, 93],
     quant: [15, 118, 110],
     ink: [23, 24, 28],
   };
 
-  function rgba(color, alpha) {
-    return `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
-  }
-
-  // 猎户座主星 8 颗（相对坐标 0-1，按屏幕方向归一化）
-  const orionStars = [
-    { name: 'Betelgeuse', greek: 'α', mag: 0.5, x: 0.62, y: 0.30 },
-    { name: 'Bellatrix',  greek: 'γ', mag: 1.6, x: 0.38, y: 0.33 },
-    { name: 'Mintaka',    greek: 'δ', mag: 2.2, x: 0.55, y: 0.55 },
-    { name: 'Alnilam',    greek: 'ε', mag: 1.7, x: 0.50, y: 0.57 },
-    { name: 'Alnitak',    greek: 'ζ', mag: 2.0, x: 0.45, y: 0.59 },
-    { name: 'Saiph',      greek: 'κ', mag: 2.1, x: 0.40, y: 0.78 },
-    { name: 'Rigel',      greek: 'β', mag: 0.1, x: 0.62, y: 0.80 },
-    { name: 'Meissa',     greek: 'λ', mag: 3.4, x: 0.51, y: 0.13 },
-  ];
-
-  // 标准星座连线（猎户座图谱）
-  const orionLines = [
-    [0, 1], [0, 4], [1, 2], [2, 3], [3, 4],
-    [4, 5], [2, 6], [5, 6], [0, 7], [1, 7],
-  ];
-
-  function makeField(root) {
+  function makeField(root: HTMLElement) {
     if (root.dataset.structureReady === 'true') return;
     root.dataset.structureReady = 'true';
 
-    const canvas = root.querySelector('[data-structure-canvas]');
+    const canvas = root.querySelector<HTMLCanvasElement>('[data-structure-canvas]');
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
     let width = 0;
     let height = 0;
     let dpr = 1;
     let frame = 0;
     let pointer = { x: 0, y: 0, active: false };
     let mode = root.dataset.mode || 'triad';
-    let stage = root.dataset.stage || 'entry';
+    let stageId = root.dataset.stage || scenes[0].id;
     const compact = root.classList.contains('structure-field--compact');
 
-    // 性能：帧率上限
+    // FPS cap + 性能优化
     const targetFPS = 42;
     const frameInterval = 1000 / targetFPS;
     let lastFrameTime = 0;
     let paused = false;
 
     const N = compact ? 36 : 72;
-    // 统一点云：每个点带 home 位置 + target 位置（stage 切换后变化）+ 角色
-    const points = Array.from({ length: N }, (_, index) => {
+
+    const points: PointState[] = Array.from({ length: N }, (_, index) => {
       const seedA = Math.sin(index * 999) * 10000;
       const fx = seedA - Math.floor(seedA);
       const seedB = Math.sin(index * 327.13 + 1.7) * 10000;
       const fy = seedB - Math.floor(seedB);
       return {
         index,
-        x: 0, y: 0,                  // 当前位置
-        homeX: fx, homeY: fy,        // 漂浮态归一化位置
-        targetX: 0, targetY: 0,      // 当前 stage 的目标位置
-        vx: 0, vy: 0,                // 速度
+        x: 0,
+        y: 0,
+        homeX: fx,
+        homeY: fy,
+        targetX: 0,
+        targetY: 0,
+        vx: 0,
+        vy: 0,
         phase: index * 0.61,
-        role: 'background',          // background / orion / circle / closing / focus
-        orionIndex: -1,
-        homeJitterPhase: index * 1.13,
+        role: 'background',
+        meta: {},
       };
     });
 
-    function applyStageLayout() {
-      const cx = width * 0.5;
-      const cy = height * 0.5;
+    function getCurrentScene(): SceneSpec | null {
+      return scenesById[stageId] || null;
+    }
 
-      if (stage === 'entry') {
-        points.forEach((p, i) => {
-          p.targetX = p.homeX * width;
-          p.targetY = p.homeY * height;
-          p.role = i === 0 ? 'focus' : 'background';
-          p.orionIndex = -1;
-        });
-      } else if (stage === 'circle') {
-        const radius = Math.min(width, height) * 0.24;
-        const ringCount = Math.min(28, Math.floor(N * 0.4));
-        points.forEach((p, i) => {
-          if (i < ringCount) {
-            const theta = (i / ringCount) * Math.PI * 2;
-            p.targetX = cx + Math.cos(theta) * radius;
-            p.targetY = cy + Math.sin(theta) * radius;
-            p.role = 'circle';
-          } else {
-            p.targetX = p.homeX * width;
-            p.targetY = p.homeY * height;
-            p.role = 'background';
-          }
-          p.orionIndex = -1;
-        });
-      } else if (stage === 'projection') {
-        const span = Math.min(width, height) * 0.62;
-        points.forEach((p, i) => {
-          if (i < orionStars.length) {
-            p.targetX = cx + (orionStars[i].x - 0.5) * span;
-            p.targetY = cy + (orionStars[i].y - 0.5) * span;
-            p.role = 'orion';
-            p.orionIndex = i;
-          } else {
-            // 背景点保持漂浮位置
-            p.targetX = p.homeX * width;
-            p.targetY = p.homeY * height;
-            p.role = 'background';
-            p.orionIndex = -1;
-          }
-        });
-      } else if (stage === 'field') {
-        // 点保持漂浮，绘制时叠加流场位移
-        points.forEach((p, i) => {
-          p.targetX = p.homeX * width;
-          p.targetY = p.homeY * height;
-          p.role = 'background';
-          p.orionIndex = -1;
-        });
-      } else if (stage === 'closing') {
-        // 收束到水平线
-        points.forEach((p, i) => {
-          const t = i / Math.max(1, points.length - 1);
-          p.targetX = width * 0.16 + t * width * 0.68;
-          p.targetY = height * 0.5 + (Math.sin(i * 1.7) * 4);
-          p.role = 'closing';
-          p.orionIndex = -1;
-        });
-      }
+    function buildSceneCtx(time: number): SceneCtx {
+      return {
+        width,
+        height,
+        time,
+        compact,
+        pointer,
+        color: palette.math,
+        ink: palette.ink,
+      };
     }
 
     function resize() {
@@ -160,64 +97,57 @@ const { mode = 'triad', compact = false } = Astro.props;
       width = Math.max(1, box.width);
       height = Math.max(1, box.height);
       dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.floor(width * dpr);
-      canvas.height = Math.floor(height * dpr);
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      canvas!.width = Math.floor(width * dpr);
+      canvas!.height = Math.floor(height * dpr);
+      canvas!.style.width = `${width}px`;
+      canvas!.style.height = `${height}px`;
+      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       // 初始化点位置到 target
-      applyStageLayout();
-      for (const p of points) {
-        if (p.x === 0 && p.y === 0) {
-          p.x = p.targetX;
-          p.y = p.targetY;
+      const scene = getCurrentScene();
+      if (scene) {
+        scene.layout(points, buildSceneCtx(performance.now()));
+        for (const p of points) {
+          if (p.x === 0 && p.y === 0) {
+            p.x = p.targetX;
+            p.y = p.targetY;
+          }
         }
       }
     }
 
-    function drawGrid(t) {
+    function drawGrid(t: number) {
       const step = compact ? 64 : 96;
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(23, 24, 28, 0.045)';
+      ctx!.lineWidth = 1;
+      ctx!.strokeStyle = 'rgba(23, 24, 28, 0.045)';
 
       for (let x = -step; x < width + step; x += step) {
         const wobble = Math.sin(t * 0.001 + x * 0.013) * 1.8;
-        ctx.beginPath();
-        ctx.moveTo(x + wobble, 0);
-        ctx.lineTo(x - wobble, height);
-        ctx.stroke();
+        ctx!.beginPath();
+        ctx!.moveTo(x + wobble, 0);
+        ctx!.lineTo(x - wobble, height);
+        ctx!.stroke();
       }
 
       for (let y = -step; y < height + step; y += step) {
         const wobble = Math.cos(t * 0.001 + y * 0.011) * 1.6;
-        ctx.beginPath();
-        ctx.moveTo(0, y + wobble);
-        ctx.lineTo(width, y - wobble);
-        ctx.stroke();
+        ctx!.beginPath();
+        ctx!.moveTo(0, y + wobble);
+        ctx!.lineTo(width, y - wobble);
+        ctx!.stroke();
       }
     }
 
-    function updatePoints(t) {
-      // 弹簧插值到 target + 鼠标交互 + 各 stage 的额外动力学
+    function updatePoints(t: number) {
       const k = 0.04;
       const damp = 0.84;
 
       for (const p of points) {
-        // 漂浮态加入微小的 sin 抖动（让背景点活着）
         let tx = p.targetX;
         let ty = p.targetY;
         if (p.role === 'background') {
-          tx += Math.sin(t * 0.0004 + p.homeJitterPhase) * 18;
-          ty += Math.cos(t * 0.00033 + p.homeJitterPhase) * 14;
-        }
-
-        // field stage 叠加流场
-        if (stage === 'field' && p.role === 'background') {
-          const flowX = Math.sin(p.y * 0.006 + t * 0.0004) * 28;
-          const flowY = Math.cos(p.x * 0.006 - t * 0.0003) * 22;
-          tx += flowX;
-          ty += flowY;
+          tx += Math.sin(t * 0.0004 + p.phase * 1.7) * 16;
+          ty += Math.cos(t * 0.00033 + p.phase * 1.7) * 12;
         }
 
         p.vx += (tx - p.x) * k;
@@ -227,8 +157,8 @@ const { mode = 'triad', compact = false } = Astro.props;
         p.x += p.vx;
         p.y += p.vy;
 
-        // 鼠标轻微吸引（orion 主星不受影响，保持位置）
-        if (pointer.active && p.role !== 'orion') {
+        // 鼠标吸引（被场景固定的角色不受影响）
+        if (pointer.active && p.role !== 'orion' && p.role !== 'grid-node' && p.role !== 'ring') {
           const dx = pointer.x - p.x;
           const dy = pointer.y - p.y;
           const d = Math.hypot(dx, dy);
@@ -241,9 +171,9 @@ const { mode = 'triad', compact = false } = Astro.props;
       }
     }
 
-    function drawConnections(t) {
+    function drawConnections() {
       const threshold = compact ? 120 : 170;
-      ctx.lineWidth = 0.55;
+      ctx!.lineWidth = 0.55;
 
       for (let i = 0; i < points.length; i += 1) {
         for (let j = i + 1; j < points.length; j += 1) {
@@ -251,327 +181,125 @@ const { mode = 'triad', compact = false } = Astro.props;
           const dy = points[i].y - points[j].y;
           const d = Math.hypot(dx, dy);
           if (d < threshold) {
-            // 默认弱连线
-            let alpha = (1 - d / threshold) * 0.11;
-
-            // 鼠标附近显著加深
+            let alpha = (1 - d / threshold) * 0.1;
             if (pointer.active) {
               const md1 = Math.hypot(points[i].x - pointer.x, points[i].y - pointer.y);
               const md2 = Math.hypot(points[j].x - pointer.x, points[j].y - pointer.y);
               const md = Math.min(md1, md2);
               if (md < 220) {
                 const near = 1 - md / 220;
-                alpha = (1 - d / threshold) * (0.38 * near + 0.11);
+                alpha = (1 - d / threshold) * (0.38 * near + 0.1);
               }
             }
-
-            ctx.strokeStyle = rgba(palette.ink, alpha);
-            ctx.beginPath();
-            ctx.moveTo(points[i].x, points[i].y);
-            ctx.lineTo(points[j].x, points[j].y);
-            ctx.stroke();
+            ctx!.strokeStyle = rgba(palette.ink, alpha);
+            ctx!.beginPath();
+            ctx!.moveTo(points[i].x, points[i].y);
+            ctx!.lineTo(points[j].x, points[j].y);
+            ctx!.stroke();
           }
         }
       }
     }
 
-    function drawOrionConstellation(t, color) {
-      // 在统一点云之上，绘制猎户座的标准连线（更突出）+ 球面 hint
-      const orionPoints = [];
-      for (const p of points) {
-        if (p.role === 'orion' && p.orionIndex >= 0) {
-          orionPoints[p.orionIndex] = p;
-        }
-      }
-      if (orionPoints.length < 8) return;
-
-      const cx = width * 0.5;
-      const cy = height * 0.5;
-      const span = Math.min(width, height) * 0.62;
-
-      // 球面 hint
-      ctx.strokeStyle = rgba(palette.ink, 0.06);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, span * 0.55, span * 0.55, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      for (let i = 1; i <= 3; i += 1) {
-        ctx.strokeStyle = rgba(palette.ink, 0.04);
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, span * 0.55 * (i / 4), span * 0.55, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, span * 0.55, span * 0.55 * (i / 4), 0, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // 慢速交替：星座线 ↔ r-邻近图
-      const cycle = (Math.sin(t * 0.0004) + 1) / 2;
-      const constellationAlpha = 0.5 * cycle + 0.2;
-
-      ctx.strokeStyle = rgba(color, constellationAlpha);
-      ctx.lineWidth = 1.3;
-      for (const [i, j] of orionLines) {
-        if (orionPoints[i] && orionPoints[j]) {
-          ctx.beginPath();
-          ctx.moveTo(orionPoints[i].x, orionPoints[i].y);
-          ctx.lineTo(orionPoints[j].x, orionPoints[j].y);
-          ctx.stroke();
-        }
-      }
-
-      // 投影虚线：腰带中星 Alnilam 向底部基线投影
-      const alnilam = orionPoints[3];
-      if (alnilam) {
-        const baseY = cy + span * 0.58;
-        ctx.strokeStyle = rgba(color, 0.18);
-        ctx.setLineDash([2, 5]);
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(alnilam.x, alnilam.y);
-        ctx.lineTo(alnilam.x, baseY);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx - span * 0.55, baseY);
-        ctx.lineTo(cx + span * 0.55, baseY);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = rgba(color, 0.6);
-        ctx.beginPath();
-        ctx.arc(alnilam.x, baseY, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    function drawCircleRing(t, color) {
-      const cx = width * 0.5;
-      const cy = height * 0.5;
-      const radius = Math.min(width, height) * 0.24;
-
-      ctx.strokeStyle = rgba(color, 0.32);
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // 半径线指向一个旋转点
-      const theta = t * 0.00045;
-      const px = cx + Math.cos(theta) * radius;
-      const py = cy + Math.sin(theta) * radius;
-
-      ctx.strokeStyle = rgba(color, 0.22);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(px, py);
-      ctx.stroke();
-
-      ctx.fillStyle = rgba(palette.ink, 0.6);
-      ctx.beginPath();
-      ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    function drawAxes(alpha, color) {
-      const originX = width * 0.18;
-      const originY = height * 0.78;
-
-      ctx.strokeStyle = rgba(palette.ink, 0.16 * alpha);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(originX, 0);
-      ctx.lineTo(originX, height);
-      ctx.moveTo(0, originY);
-      ctx.lineTo(width, originY);
-      ctx.stroke();
-
-      // 轴标
-      ctx.font = '9px JetBrains Mono, monospace';
-      ctx.fillStyle = rgba(palette.ink, 0.32 * alpha);
-      ctx.fillText('x', width - 16, originY - 6);
-      ctx.fillText('y', originX + 6, 14);
-      ctx.fillStyle = rgba(palette.ink, 0.5 * alpha);
-      ctx.beginPath();
-      ctx.arc(originX, originY, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    function drawVectorArrows(t, color) {
-      const step = compact ? 130 : 170;
-      ctx.strokeStyle = rgba(color, 0.22);
-      ctx.lineWidth = 1;
-      for (let x = step * 0.6; x < width; x += step) {
-        for (let y = step * 0.6; y < height; y += step) {
-          const dx = Math.cos((x + y) * 0.006 + t * 0.0005) * 14;
-          const dy = Math.sin(x * 0.008 + t * 0.0004) * 14;
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x + dx, y + dy);
-          ctx.stroke();
-          ctx.fillStyle = rgba(color, 0.32);
-          ctx.beginPath();
-          ctx.arc(x + dx, y + dy, 1.6, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
-      // 一条轨迹螺旋
-      const baseR = Math.min(width, height) * 0.22;
-      ctx.strokeStyle = rgba(color, 0.4);
-      ctx.lineWidth = 1.3;
-      ctx.beginPath();
-      for (let i = 0; i <= 80; i += 1) {
-        const tau = i / 80;
-        const angle = tau * Math.PI * 4 + t * 0.0003;
-        const r = baseR * (0.4 + tau * 0.6);
-        const x = width * 0.5 + Math.cos(angle) * r;
-        const y = height * 0.5 + Math.sin(angle) * r * 0.5;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-    }
-
-    function drawPoints() {
+    function drawPointsLayer() {
       for (const p of points) {
         if (p.role === 'orion') {
-          const star = orionStars[p.orionIndex];
-          if (!star) continue;
-          const r = Math.max(2, 4.8 - star.mag * 0.65);
-          const pulse = 1 + Math.sin(performance.now() * 0.0015 + p.phase) * 0.1;
-
-          // 光晕
-          const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 6);
-          grad.addColorStop(0, rgba(palette.math, 0.42 * pulse));
+          // 大星，光晕（从 analysis scene 来的角色）
+          ctx!.fillStyle = rgba(palette.ink, 0.92);
+          const grad = ctx!.createRadialGradient(p.x, p.y, 0, p.x, p.y, 22);
+          grad.addColorStop(0, rgba(palette.math, 0.42));
           grad.addColorStop(0.4, rgba(palette.math, 0.16));
           grad.addColorStop(1, rgba(palette.math, 0));
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, r * 6, 0, Math.PI * 2);
-          ctx.fill();
+          ctx!.fillStyle = grad;
+          ctx!.beginPath();
+          ctx!.arc(p.x, p.y, 22, 0, Math.PI * 2);
+          ctx!.fill();
 
-          // 本体
-          ctx.fillStyle = rgba(palette.ink, 0.92);
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, r * pulse, 0, Math.PI * 2);
-          ctx.fill();
+          ctx!.fillStyle = rgba(palette.ink, 0.92);
+          ctx!.beginPath();
+          ctx!.arc(p.x, p.y, 3.4, 0, Math.PI * 2);
+          ctx!.fill();
         } else if (p.role === 'focus') {
-          // entry 焦点
-          const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 18);
+          const grad = ctx!.createRadialGradient(p.x, p.y, 0, p.x, p.y, 18);
           grad.addColorStop(0, rgba(palette.math, 0.42));
           grad.addColorStop(1, rgba(palette.math, 0));
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 18, 0, Math.PI * 2);
-          ctx.fill();
-
-          ctx.fillStyle = rgba(palette.ink, 0.88);
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 3.6, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (p.role === 'circle' || p.role === 'closing') {
-          // 高亮但小
-          const md = pointer.active ? Math.hypot(p.x - pointer.x, p.y - pointer.y) : 999;
-          const near = md < 200;
-          ctx.fillStyle = rgba(palette.ink, near ? 0.75 : 0.5);
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 1.8, 0, Math.PI * 2);
-          ctx.fill();
+          ctx!.fillStyle = grad;
+          ctx!.beginPath();
+          ctx!.arc(p.x, p.y, 18, 0, Math.PI * 2);
+          ctx!.fill();
+          ctx!.fillStyle = rgba(palette.ink, 0.88);
+          ctx!.beginPath();
+          ctx!.arc(p.x, p.y, 3.6, 0, Math.PI * 2);
+          ctx!.fill();
+        } else if (p.role === 'grid-node') {
+          ctx!.fillStyle = rgba(palette.math, 0.55);
+          ctx!.beginPath();
+          ctx!.arc(p.x, p.y, 1.8, 0, Math.PI * 2);
+          ctx!.fill();
+        } else if (p.role === 'walker') {
+          // walker 头部已在 scene 自己画了光晕，这里画一个小本体
+          ctx!.fillStyle = rgba(palette.ink, 0.7);
+          ctx!.beginPath();
+          ctx!.arc(p.x, p.y, 2, 0, Math.PI * 2);
+          ctx!.fill();
+        } else if (p.role === 'sample') {
+          ctx!.fillStyle = rgba(palette.ink, 0.32);
+          ctx!.beginPath();
+          ctx!.arc(p.x, p.y, 1.2, 0, Math.PI * 2);
+          ctx!.fill();
+        } else if (p.role === 'ring') {
+          ctx!.fillStyle = rgba(palette.math, 0.7);
+          ctx!.beginPath();
+          ctx!.arc(p.x, p.y, 1.3, 0, Math.PI * 2);
+          ctx!.fill();
         } else {
-          // 背景点
+          // background
           const md = pointer.active ? Math.hypot(p.x - pointer.x, p.y - pointer.y) : 999;
           const near = md < 200;
-          ctx.fillStyle = rgba(palette.ink, near ? 0.72 : 0.26);
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
-          ctx.fill();
+          ctx!.fillStyle = rgba(palette.ink, near ? 0.7 : 0.24);
+          ctx!.beginPath();
+          ctx!.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+          ctx!.fill();
         }
       }
     }
 
-    function drawAnnotations() {
-      ctx.font = '9px JetBrains Mono, monospace';
-
-      if (stage === 'projection') {
-        // 猎户主星标希腊字母 + name
-        ctx.fillStyle = rgba(palette.ink, 0.38);
-        for (const p of points) {
-          if (p.role === 'orion' && p.orionIndex >= 0) {
-            const star = orionStars[p.orionIndex];
-            ctx.font = 'italic 11px "Cormorant Garamond", serif';
-            ctx.fillText(star.greek, p.x + 9, p.y - 7);
-          }
-        }
-      } else {
-        // 抽样标 (x, y) 坐标 —— 鼠标附近 + 静态抽样
-        ctx.fillStyle = rgba(palette.ink, 0.22);
-        for (const p of points) {
-          const md = pointer.active ? Math.hypot(p.x - pointer.x, p.y - pointer.y) : 999;
-          const showSampled = (p.index % 11 === 0);
-          if (md < 160 || showSampled) {
-            const fade = md < 160 ? 0.42 : 0.18;
-            ctx.fillStyle = rgba(palette.ink, fade);
-            ctx.fillText(`(${Math.floor(p.x)},${Math.floor(p.y)})`, p.x + 6, p.y - 5);
-          }
-        }
-      }
-    }
-
-    function drawMathLayers(t) {
-      // stage-specific 装饰几何
-      if (stage === 'entry') {
-        drawAxes(1, palette.math);
-      } else if (stage === 'circle') {
-        drawCircleRing(t, palette.math);
-      } else if (stage === 'projection') {
-        drawOrionConstellation(t, palette.math);
-      } else if (stage === 'field') {
-        drawVectorArrows(t, palette.math);
-      } else if (stage === 'closing') {
-        // 中心一个微小圆
-        const cx = width * 0.5, cy = height * 0.5;
-        const r = 8 + Math.sin(t * 0.0008) * 2;
-        ctx.strokeStyle = rgba(palette.math, 0.4);
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-    }
-
-    // === 旧 triad / ai / quant 模式保留（about/blog 子页面用） ===
-    function drawTriadMode(t) {
-      // 简化：用同一统一点云，不做 stage 切换，鼠标交互在；额外画三色等高线/网络/趋势
-      drawConnections(t);
-      drawPoints();
-    }
-
-    function render(time) {
+    function render(time: number) {
       frame = requestAnimationFrame(render);
       if (paused || document.hidden) return;
 
-      // FPS cap
       if (time - lastFrameTime < frameInterval) return;
       lastFrameTime = time;
 
-      ctx.clearRect(0, 0, width, height);
+      ctx!.clearRect(0, 0, width, height);
       drawGrid(time);
 
       if (mode === 'math') {
-        updatePoints(time);
-        drawMathLayers(time);
-        drawConnections(time);
-        drawPoints();
-        drawAnnotations();
+        const scene = getCurrentScene();
+        if (scene) {
+          const sctx = buildSceneCtx(time);
+          // 每帧都让 scene 重新设置 target（支持时间相关的 layout，如 walker/transform 矩阵）
+          scene.layout(points, sctx);
+          updatePoints(time);
+          if (scene.drawLayers) scene.drawLayers(ctx!, points, sctx);
+          drawConnections();
+          drawPointsLayer();
+          if (scene.annotate) scene.annotate(ctx!, points, sctx);
+        }
       } else {
-        // 其他 mode 用统一点云
-        updatePoints(time);
-        drawConnections(time);
-        drawPoints();
+        // 其他 mode：用 entry scene 的简单点云布局
+        const scene = scenesById['entry'];
+        if (scene) {
+          const sctx = buildSceneCtx(time);
+          scene.layout(points, sctx);
+          updatePoints(time);
+          drawConnections();
+          drawPointsLayer();
+        }
       }
     }
 
-    function onPointerMove(event) {
+    function onPointerMove(event: PointerEvent) {
       const rect = root.getBoundingClientRect();
       pointer = {
         x: event.clientX - rect.left,
@@ -584,20 +312,21 @@ const { mode = 'triad', compact = false } = Astro.props;
       pointer.active = false;
     }
 
-    function onMode(event) {
-      if (event.detail && event.detail.mode) {
-        mode = event.detail.mode;
+    function onMode(event: Event) {
+      const ev = event as CustomEvent<{ mode?: string }>;
+      if (ev.detail && ev.detail.mode) {
+        mode = ev.detail.mode;
         root.dataset.mode = mode;
       }
     }
 
-    function onStage(event) {
-      if (event.detail && event.detail.stage) {
-        const newStage = event.detail.stage;
-        if (newStage !== stage) {
-          stage = newStage;
-          root.dataset.stage = stage;
-          applyStageLayout();
+    function onStage(event: Event) {
+      const ev = event as CustomEvent<{ stage?: string }>;
+      if (ev.detail && ev.detail.stage) {
+        const newStage = ev.detail.stage;
+        if (newStage !== stageId) {
+          stageId = newStage;
+          root.dataset.stage = stageId;
         }
       }
     }
@@ -626,5 +355,6 @@ const { mode = 'triad', compact = false } = Astro.props;
     }, { once: true });
   }
 
+  const fields = document.querySelectorAll<HTMLElement>('[data-structure-field]');
   fields.forEach(makeField);
 </script>
