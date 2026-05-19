@@ -302,6 +302,34 @@
     transition-delay: 280ms;
   }
 
+  /* === Scroll-linked reveal (γ + δ) ===
+     每个 [data-reveal] 元素持有 --reveal-progress 变量 (0-1)
+     用变量插值 opacity / translateY / blur / scale */
+  [data-reveal] {
+    --reveal-progress: 0;
+    --p: var(--reveal-progress);
+    opacity: var(--p);
+    transform: translateY(calc((1 - var(--p)) * 36px)) scale(calc(0.98 + var(--p) * 0.02));
+    filter: blur(calc((1 - var(--p)) * 8px));
+    will-change: opacity, transform, filter;
+    transition: filter 220ms linear;
+  }
+
+  /* 子元素错峰：通过 transition-delay 和 calc 模拟分段触发 */
+  [data-reveal-child] {
+    --child-offset: 0;
+    --pc: clamp(0, calc((var(--reveal-progress) - var(--child-offset)) / 0.55), 1);
+    opacity: var(--pc);
+    transform: translateY(calc((1 - var(--pc)) * 22px));
+    filter: blur(calc((1 - var(--pc)) * 6px));
+    will-change: opacity, transform, filter;
+  }
+  [data-reveal-child]:nth-child(1) { --child-offset: 0.0; }
+  [data-reveal-child]:nth-child(2) { --child-offset: 0.12; }
+  [data-reveal-child]:nth-child(3) { --child-offset: 0.24; }
+  [data-reveal-child]:nth-child(4) { --child-offset: 0.36; }
+  [data-reveal-child]:nth-child(5) { --child-offset: 0.48; }
+
   .sys-info {
     position: fixed;
     top: 2.2rem;

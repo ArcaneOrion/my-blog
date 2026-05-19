@@ -2,7 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import StructureField from '../components/StructureField.astro';
 import { scenes } from '../scenes';
-import { pathFor } from '../lib/site';
+import { siteBase } from '../lib/site';
 
 const heroScene = scenes[0];
 const sectionScenes = scenes.slice(1);
@@ -34,97 +34,80 @@ function italicLines(text: string) {
           </p>
 
           <h1 class="fade-in-delay-2 mt-10 font-display text-[clamp(5.5rem,17vw,15rem)] font-normal leading-[0.82] tracking-[-0.03em] text-arcane-text">
-            arcane<span class="text-arcane-math">.</span><br />
-            orion
+            Arcane<span class="text-arcane-math">.</span><br />
+            Orion
           </h1>
 
           <p class="fade-in-delay-3 mt-10 max-w-xl text-[1.1rem] leading-[1.9] text-arcane-text-secondary md:text-[1.18rem]">
-            {italicLines(heroScene.copy.italicCopy).map((line, i) => (
+            {italicLines(heroScene.copy.italicCopy).map((line) => (
               <span class="italic block" style="font-family: var(--font-italic); font-weight: 400;">
-                {line || ' '}
+                {line || ' '}
               </span>
             ))}
           </p>
-
-          <div class="fade-in-delay-3 mt-14 flex items-center gap-6">
-            <a
-              href={pathFor('/blog')}
-              class="group inline-flex items-center gap-3 border-b border-arcane-text/20 pb-1 font-mono text-[0.72rem] uppercase tracking-[0.32em] text-arcane-text transition-colors hover:border-arcane-math hover:text-arcane-math"
-            >
-              <span class="text-base leading-none">○</span>
-              enter
-            </a>
-            <span class="font-mono text-[0.6rem] uppercase tracking-[0.32em] text-arcane-text-dim">scroll to descend</span>
-          </div>
         </div>
       </section>
 
-      <!-- 后 4 个 stage：根据 anchor.x 决定文字左/右对照 -->
+      <!-- 4 个 stage：根据 anchor.x 决定文字左/右对照 -->
       {sectionScenes.map((scene) => {
         const textOnLeft = scene.anchor.x > 0.5;
         return (
           <section
-            class="page-shell home-stage flex items-center reveal"
+            class="page-shell home-stage flex items-center"
             data-stage={scene.id}
+            data-reveal
           >
             <div class:list={[
               'grid w-full gap-12',
               textOnLeft ? 'lg:grid-cols-[1fr_0.72fr]' : 'lg:grid-cols-[0.72fr_1fr]',
             ]}>
-              {/* 左列：文字 or 注脚 */}
+              {/* 文字列 */}
               <div class:list={[
-                textOnLeft ? 'self-end order-1' : 'self-end order-1 lg:text-right lg:order-2',
+                'self-end',
+                textOnLeft ? 'order-1' : 'order-1 lg:text-right lg:order-2',
               ]}>
-                <p class={`font-mono text-[0.62rem] uppercase tracking-[0.42em] ${scene.id === 'gateway' ? 'text-arcane-math' : 'text-arcane-math'}`}>
+                <p class="font-mono text-[0.62rem] uppercase tracking-[0.42em] text-arcane-math" data-reveal-child>
                   {scene.copy.sectionLabel}
                 </p>
                 <p
                   class="mt-6 text-[1.4rem] leading-[1.7] text-arcane-text md:text-[1.6rem]"
                   style="font-family: var(--font-italic); font-weight: 400; font-style: italic;"
+                  data-reveal-child
                 >
                   {italicLines(scene.copy.italicCopy).map((line) => (
-                    <span class="block">{line || ' '}</span>
+                    <span class="block">{line || ' '}</span>
                   ))}
                 </p>
               </div>
 
-              {/* 右列：sideNote */}
+              {/* 注脚列（不再有大 glyph） */}
               <div class:list={[
                 'self-end pb-2',
                 textOnLeft ? 'lg:text-right order-2' : 'order-2 lg:order-1',
               ]}>
                 {scene.copy.sideNote && (
-                  <p class="font-mono text-[0.58rem] uppercase tracking-[0.32em] text-arcane-text-dim leading-[1.9]">
+                  <p class="font-mono text-[0.58rem] uppercase tracking-[0.32em] text-arcane-text-dim leading-[1.9]" data-reveal-child>
                     {scene.copy.sideNote.split('\n').map((line) => (
                       <span class="block">{line}</span>
                     ))}
                   </p>
                 )}
-                <p class="mt-4 stage-glyph font-display text-[clamp(5rem,9vw,10rem)] leading-none text-arcane-text/14">
-                  {scene.copy.glyph}
-                </p>
               </div>
             </div>
           </section>
         );
       })}
-
-      <!-- Closing footer：scroll to descend 已结束，简单留白 -->
-      <section class="page-shell pt-8 pb-24">
-        <div class="mt-8 flex justify-center gap-12 font-mono text-[0.62rem] uppercase tracking-[0.36em]">
-          <a href={pathFor('/blog')} class="text-arcane-text-secondary transition-colors hover:text-arcane-math">math</a>
-          <span class="text-arcane-text-dim/40">ai</span>
-          <span class="text-arcane-text-dim/40">quant</span>
-        </div>
-      </section>
     </main>
   </div>
 
   <script>
     import { scenes, scenesById } from '../scenes';
+    import { initScrollReveal } from '../lib/scroll-reveal';
+
+    // 透传给 gateway scene 的 onClick：base URL 用于拼跳转 URL
+    (window as any).__BLOG_BASE__ = import.meta.env.BASE_URL.replace(/\/$/, '');
 
     const stages = Array.from(document.querySelectorAll('[data-stage]'));
-    const reveals = Array.from(document.querySelectorAll('.reveal'));
 
     function updateSysInfo(stageId: string) {
       const scene = scenesById[stageId];
@@ -165,17 +148,7 @@ function italicLines(text: string) {
       stages.forEach((stage) => stageObserver.observe(stage));
     }
 
-    if (reveals.length > 0) {
-      const revealObserver = new IntersectionObserver((entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('is-visible');
-            revealObserver.unobserve(entry.target);
-          }
-        }
-      }, { threshold: 0.15 });
-
-      reveals.forEach((el) => revealObserver.observe(el));
-    }
+    // scroll-linked reveal（γ + δ：blur + scale + scroll progress）
+    initScrollReveal();
   </script>
 </BaseLayout>

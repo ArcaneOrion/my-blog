@@ -58,6 +58,12 @@ export interface SceneSpec {
   drawLayers?: (ctx: CanvasRenderingContext2D, points: PointState[], sctx: SceneCtx) => void;
   // 数学符号 / 坐标标注
   annotate?: (ctx: CanvasRenderingContext2D, points: PointState[], sctx: SceneCtx) => void;
+  // 命中测试：判断 canvas 坐标 (x, y) 是否落在 scene 的可点击区域
+  hitTest?: (x: number, y: number, sctx: SceneCtx) => boolean;
+  // 点击处理（如触发过渡）
+  onClick?: (sctx: SceneCtx) => void;
+  // 鼠标悬停在 hit 区域时的光标样式
+  cursor?: string;
 }
 
 export function rgba(color: ColorTuple, alpha: number): string {

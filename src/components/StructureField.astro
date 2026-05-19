@@ -306,10 +306,38 @@ const { mode = 'triad', compact = false } = Astro.props;
         y: event.clientY - rect.top,
         active: true,
       };
+
+      // 命中测试：当前 scene 如果定义了 hitTest 且鼠标在热区内，切换 cursor
+      const scene = getCurrentScene();
+      if (scene?.hitTest && mode === 'math') {
+        const sctx = buildSceneCtx(performance.now());
+        const hit = scene.hitTest(pointer.x, pointer.y, sctx);
+        root.style.pointerEvents = hit ? 'auto' : 'none';
+        root.style.cursor = hit ? (scene.cursor || 'pointer') : '';
+      } else {
+        root.style.pointerEvents = 'none';
+        root.style.cursor = '';
+      }
     }
 
     function onPointerLeave() {
       pointer.active = false;
+      root.style.pointerEvents = 'none';
+      root.style.cursor = '';
+    }
+
+    function onClick(event: MouseEvent) {
+      const scene = getCurrentScene();
+      if (!scene?.hitTest || !scene.onClick) return;
+      const rect = root.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const sctx = buildSceneCtx(performance.now());
+      if (scene.hitTest(x, y, sctx)) {
+        // 透传 blogRoot（base URL）
+        (sctx as any).blogRoot = (window as any).__BLOG_BASE__ || '';
+        scene.onClick(sctx);
+      }
     }
 
     function onMode(event: Event) {
@@ -339,6 +367,7 @@ const { mode = 'triad', compact = false } = Astro.props;
     window.addEventListener('resize', resize);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerleave', onPointerLeave);
+    window.addEventListener('click', onClick);
     window.addEventListener('structure-mode', onMode);
     window.addEventListener('structure-stage', onStage);
     document.addEventListener('visibilitychange', onVisibility);
@@ -349,6 +378,7 @@ const { mode = 'triad', compact = false } = Astro.props;
       window.removeEventListener('resize', resize);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerleave', onPointerLeave);
+      window.removeEventListener('click', onClick);
       window.removeEventListener('structure-mode', onMode);
       window.removeEventListener('structure-stage', onStage);
       document.removeEventListener('visibilitychange', onVisibility);

@@ -1,9 +1,10 @@
 // Gateway scene：博客入口
 // 数学语义：所有结构收束于一个圆环——门
-// anchor 居中：5 个 anchor 漂移最终归零
+// 点击圆环（半径 1.2x 范围内）触发随机过渡动画
 
 import type { SceneSpec, SceneCtx } from './types';
 import { rgba } from './types';
+import { pickTransition } from '../transitions';
 
 function anchorCenter(sctx: SceneCtx): { cx: number; cy: number; radius: number } {
   const cx = sctx.width * 0.5;
@@ -17,6 +18,13 @@ function hoverFactor(sctx: SceneCtx): number {
   const { cx, cy, radius } = anchorCenter(sctx);
   const d = Math.hypot(sctx.pointer.x - cx, sctx.pointer.y - cy);
   return Math.max(0, 1 - d / (radius * 2.5));
+}
+
+// 1.2x 半径热区
+function isInHitZone(x: number, y: number, sctx: SceneCtx): boolean {
+  const { cx, cy, radius } = anchorCenter(sctx);
+  const d = Math.hypot(x - cx, y - cy);
+  return d <= radius * 1.2;
 }
 
 export const gatewayScene: SceneSpec = {
@@ -34,12 +42,27 @@ export const gatewayScene: SceneSpec = {
     sideNote: 'math · ai · quant',
   },
 
+  cursor: 'pointer',
+
+  hitTest: (x, y, sctx) => isInHitZone(x, y, sctx),
+
+  onClick: (sctx) => {
+    const { cx, cy, radius } = anchorCenter(sctx);
+    const root = (sctx as any).blogRoot ?? '';
+    const targetUrl = `${root}/blog`.replace(/\/+/g, '/');
+    const transition = pickTransition();
+    transition.play({
+      center: { x: cx, y: cy },
+      radius,
+      targetUrl,
+    });
+  },
+
   layout: (points, sctx) => {
     const { cx, cy, radius } = anchorCenter(sctx);
     const hover = hoverFactor(sctx);
     const dynRadius = radius * (1 + hover * 0.35);
 
-    // 缺口顶部，宽度随时间慢慢旋转
     const gapAngle = sctx.time * 0.00018;
     const gapWidth = 0.45;
 
@@ -47,7 +70,6 @@ export const gatewayScene: SceneSpec = {
     points.forEach((p, i) => {
       const t = i / Math.max(1, points.length - 1);
       const theta = gapAngle + gapWidth / 2 + t * sweep;
-      // hover 时点向鼠标方向偏移一点
       const swirlPull = hover * 0.15;
       const baseX = cx + Math.cos(theta) * dynRadius;
       const baseY = cy + Math.sin(theta) * dynRadius;
@@ -72,14 +94,13 @@ export const gatewayScene: SceneSpec = {
     const gapAngle = time * 0.00018;
     const gapWidth = 0.45;
 
-    // 主圆环（带缺口 = 门）
+    // 主圆环
     ctx.strokeStyle = rgba(color, 0.36 + hover * 0.3);
     ctx.lineWidth = 1.4;
     ctx.beginPath();
     ctx.arc(cx, cy, dynRadius, gapAngle + gapWidth / 2, gapAngle - gapWidth / 2 + Math.PI * 2);
     ctx.stroke();
 
-    // 外圈（hover 时浮现）
     if (hover > 0) {
       ctx.strokeStyle = rgba(color, hover * 0.22);
       ctx.lineWidth = 1;
@@ -87,14 +108,12 @@ export const gatewayScene: SceneSpec = {
       ctx.arc(cx, cy, dynRadius * 1.35, 0, Math.PI * 2);
       ctx.stroke();
 
-      // 内圈
       ctx.strokeStyle = rgba(color, hover * 0.14);
       ctx.beginPath();
       ctx.arc(cx, cy, dynRadius * 0.7, 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    // 缺口两端的小标记（"门把手"）
     const markRadius = dynRadius;
     const markA = gapAngle + gapWidth / 2;
     const markB = gapAngle - gapWidth / 2;
@@ -107,13 +126,11 @@ export const gatewayScene: SceneSpec = {
       ctx.fill();
     }
 
-    // 中心点
     ctx.fillStyle = rgba(ink, 0.5 + hover * 0.3);
     ctx.beginPath();
     ctx.arc(cx, cy, 2 + hover * 1.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // 4 条"光"从中心向四方（hover 时增强）
     const beam = 0.06 + hover * 0.22;
     ctx.strokeStyle = rgba(color, beam);
     ctx.lineWidth = 1;
@@ -137,12 +154,11 @@ export const gatewayScene: SceneSpec = {
     ctx.fillText('enter', cx, cy + radius * (1 + hover * 0.35) + 26);
     ctx.textAlign = 'start';
 
-    // hover 时显示一句小字
     if (hover > 0.3) {
       ctx.font = '8px JetBrains Mono, monospace';
       ctx.fillStyle = rgba(color, hover * 0.6);
       ctx.textAlign = 'center';
-      ctx.fillText('door · open', cx, cy + radius * (1 + hover * 0.35) + 42);
+      ctx.fillText('door · open · click', cx, cy + radius * (1 + hover * 0.35) + 42);
       ctx.textAlign = 'start';
     }
   },
