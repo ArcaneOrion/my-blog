@@ -1,0 +1,391 @@
+---
+// Constellation:五节点星座导航(替代 PlanetField 五星球)
+// 数学语义:5 个领域是 5 个节点,符号代替球,连线像知识图谱
+// 节点用不规则布局(类似猎户座),技术三角内部全连,人文两颗用细线连到技术节点
+---
+
+<div class="constellation" data-constellation>
+  <canvas data-constellation-canvas></canvas>
+  <div class="constellation__vignette"></div>
+  <div class="constellation-label" data-constellation-label aria-live="polite"></div>
+</div>
+
+<script>
+  type ColorTuple = [number, number, number];
+
+  interface Node {
+    id: string;
+    label: string;
+    sub: string;
+    glyph: string;
+    color: ColorTuple;
+    href: string;
+    // 归一化坐标(0-1),不规则布局
+    nx: number;
+    ny: number;
+    // 节点视觉半径(基于 viewport min dim 的因子)
+    sizeFactor: number;
+    layer: 'tech' | 'humane';
+  }
+
+  interface Edge {
+    a: string;
+    b: string;
+    // primary = 技术三角(粗) / secondary = 人文连接(细)
+    kind: 'primary' | 'secondary';
+  }
+
+  const palette = {
+    math:    [29, 78, 216] as ColorTuple,
+    ai:      [190, 24, 93] as ColorTuple,
+    quant:   [15, 118, 110] as ColorTuple,
+    self:    [124, 58, 237] as ColorTuple,
+    journal: [176, 137, 64] as ColorTuple,
+    ink:     [23, 24, 28] as ColorTuple,
+  };
+
+  function rgba(c: ColorTuple, a: number): string {
+    return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`;
+  }
+
+  function makeConstellation(root: HTMLElement) {
+    if (root.dataset.constellationReady === 'true') return;
+    root.dataset.constellationReady = 'true';
+
+    const canvas = root.querySelector<HTMLCanvasElement>('[data-constellation-canvas]');
+    const labelEl = root.querySelector<HTMLDivElement>('[data-constellation-label]');
+    if (!canvas || !labelEl) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    let pointer = { x: 0, y: 0, active: false };
+    let frame = 0;
+    let lastFrameTime = 0;
+    const targetFPS = 42;
+    const frameInterval = 1000 / targetFPS;
+    let paused = false;
+    let hoveredId: string | null = null;
+
+    const blogRoot = (window as any).__BLOG_BASE__ || '';
+    const url = (p: string) => `${blogRoot}${p}`.replace(/\/+/g, '/');
+
+    // 不规则星座布局:类似猎户座的不对称结构
+    const nodes: Node[] = [
+      { id: 'math',    label: 'Mathematics', sub: 'proof · abstraction',  glyph: '∂', color: palette.math,
+        href: url('/math/'),    nx: 0.30, ny: 0.36, sizeFactor: 0.022, layer: 'tech' },
+      { id: 'ai',      label: 'AI',          sub: 'agency · context',     glyph: 'λ', color: palette.ai,
+        href: url('/ai/'),      nx: 0.56, ny: 0.28, sizeFactor: 0.024, layer: 'tech' },
+      { id: 'quant',   label: 'Quant',       sub: 'signal · feedback',    glyph: 'σ', color: palette.quant,
+        href: url('/quant/'),   nx: 0.74, ny: 0.55, sizeFactor: 0.022, layer: 'tech' },
+      { id: 'self',    label: 'Self',        sub: 'observer · origin',    glyph: '·', color: palette.self,
+        href: url('/about/'),   nx: 0.38, ny: 0.68, sizeFactor: 0.018, layer: 'humane' },
+      { id: 'journal', label: 'Journal',     sub: 'drift · note',         glyph: '∿', color: palette.journal,
+        href: url('/journal/'), nx: 0.64, ny: 0.78, sizeFactor: 0.018, layer: 'humane' },
+    ];
+
+    const edges: Edge[] = [
+      // 技术三角(全连)
+      { a: 'math', b: 'ai',    kind: 'primary' },
+      { a: 'ai',   b: 'quant', kind: 'primary' },
+      { a: 'math', b: 'quant', kind: 'primary' },
+      // 人文卫星
+      { a: 'self', b: 'journal', kind: 'secondary' },
+      { a: 'self', b: 'ai',      kind: 'secondary' },
+      { a: 'journal', b: 'math', kind: 'secondary' },
+    ];
+
+    function getNode(id: string): Node | undefined {
+      return nodes.find((n) => n.id === id);
+    }
+
+    function nodeCenter(n: Node, time: number) {
+      const base = Math.min(width, height);
+      let x = n.nx * width;
+      let y = n.ny * height;
+      // 极轻微的呼吸抖动
+      const phase = nodes.indexOf(n);
+      x += Math.sin(time * 0.0004 + phase * 1.7) * 2.2;
+      y += Math.cos(time * 0.00033 + phase * 1.7) * 1.8;
+      // 鼠标接近时被轻微吸引
+      if (pointer.active && hoveredId === n.id) {
+        x += (pointer.x - x) * 0.06;
+        y += (pointer.y - y) * 0.06;
+      }
+      return { x, y, r: base * n.sizeFactor };
+    }
+
+    function resize() {
+      const box = root.getBoundingClientRect();
+      width = Math.max(1, box.width);
+      height = Math.max(1, box.height);
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas!.width = Math.floor(width * dpr);
+      canvas!.height = Math.floor(height * dpr);
+      canvas!.style.width = `${width}px`;
+      canvas!.style.height = `${height}px`;
+      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function drawBackground(time: number) {
+      // 极淡的远景星点(80 颗)
+      const seedRand = (i: number) => {
+        const s = Math.sin(i * 999.13) * 10000;
+        return s - Math.floor(s);
+      };
+      ctx!.fillStyle = rgba(palette.ink, 0.1);
+      for (let i = 0; i < 80; i += 1) {
+        const sx = seedRand(i * 2) * width;
+        const sy = seedRand(i * 2 + 1) * height;
+        const twinkle = 0.5 + 0.5 * Math.sin(time * 0.0008 + i);
+        ctx!.globalAlpha = 0.08 + twinkle * 0.16;
+        ctx!.beginPath();
+        ctx!.arc(sx, sy, 0.7, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+      ctx!.globalAlpha = 1;
+    }
+
+    function drawEdges(time: number) {
+      for (const edge of edges) {
+        const a = getNode(edge.a);
+        const b = getNode(edge.b);
+        if (!a || !b) continue;
+        const ca = nodeCenter(a, time);
+        const cb = nodeCenter(b, time);
+
+        // 该边是否参与了 hover 节点
+        const involved = hoveredId === edge.a || hoveredId === edge.b;
+        const base = edge.kind === 'primary' ? 0.14 : 0.08;
+        const peak = edge.kind === 'primary' ? 0.7 : 0.55;
+        const alpha = involved ? peak : base;
+        const lw = edge.kind === 'primary' ? (involved ? 1.4 : 0.6) : (involved ? 1.1 : 0.4);
+
+        // 用 hover 节点的颜色染线
+        let color: ColorTuple = palette.ink;
+        if (involved) {
+          const hovered = getNode(hoveredId!);
+          if (hovered) color = hovered.color;
+        }
+
+        ctx!.strokeStyle = rgba(color, alpha);
+        ctx!.lineWidth = lw;
+        if (edge.kind === 'secondary' && !involved) {
+          ctx!.setLineDash([3, 5]);
+        }
+        ctx!.beginPath();
+        ctx!.moveTo(ca.x, ca.y);
+        ctx!.lineTo(cb.x, cb.y);
+        ctx!.stroke();
+        ctx!.setLineDash([]);
+      }
+    }
+
+    function drawNodes(time: number) {
+      for (const n of nodes) {
+        const { x, y, r } = nodeCenter(n, time);
+        const isHovered = hoveredId === n.id;
+        const scale = isHovered ? 1.4 : 1;
+        const haloAlpha = isHovered ? 0.42 : 0.16;
+
+        // halo
+        const haloR = r * 2.6 * scale;
+        const grad = ctx!.createRadialGradient(x, y, r * 0.5, x, y, haloR);
+        grad.addColorStop(0, rgba(n.color, haloAlpha));
+        grad.addColorStop(1, rgba(n.color, 0));
+        ctx!.fillStyle = grad;
+        ctx!.beginPath();
+        ctx!.arc(x, y, haloR, 0, Math.PI * 2);
+        ctx!.fill();
+
+        // glyph 字符:作为节点本体(无球)
+        const fontSize = 28 * scale;
+        ctx!.font = `${isHovered ? '500' : '400'} ${fontSize}px "Italiana", "Cormorant Garamond", serif`;
+        ctx!.fillStyle = rgba(n.color, isHovered ? 0.95 : 0.78);
+        ctx!.textAlign = 'center';
+        ctx!.textBaseline = 'middle';
+        ctx!.fillText(n.glyph, x, y);
+        ctx!.textBaseline = 'alphabetic';
+        ctx!.textAlign = 'start';
+      }
+    }
+
+    function hitTest(px: number, py: number, time: number): Node | null {
+      let hit: Node | null = null;
+      let bestDist = Infinity;
+      for (const n of nodes) {
+        const c = nodeCenter(n, time);
+        const d = Math.hypot(px - c.x, py - c.y);
+        // hit zone:节点半径 * 1.8
+        if (d < c.r * 1.8 && d < bestDist) {
+          bestDist = d;
+          hit = n;
+        }
+      }
+      return hit;
+    }
+
+    function updateLabel(time: number) {
+      if (!hoveredId) {
+        labelEl!.classList.remove('is-visible');
+        return;
+      }
+      const n = getNode(hoveredId);
+      if (!n) return;
+      const c = nodeCenter(n, time);
+      labelEl!.style.setProperty('--lx', `${c.x}px`);
+      labelEl!.style.setProperty('--ly', `${c.y - c.r - 38}px`);
+      labelEl!.style.setProperty('--lc', rgba(n.color, 0.95));
+      labelEl!.innerHTML = `
+        <span class="constellation-label__main">${n.label} ─ ${n.glyph}</span>
+        <span class="constellation-label__sub">${n.sub}</span>
+      `;
+      labelEl!.classList.add('is-visible');
+    }
+
+    function render(time: number) {
+      frame = requestAnimationFrame(render);
+      if (paused || document.hidden) return;
+      if (time - lastFrameTime < frameInterval) return;
+      lastFrameTime = time;
+
+      ctx!.clearRect(0, 0, width, height);
+      drawBackground(time);
+      drawEdges(time);
+      drawNodes(time);
+      updateLabel(time);
+    }
+
+    function onPointerMove(event: PointerEvent) {
+      const rect = root.getBoundingClientRect();
+      pointer = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        active: true,
+      };
+      const hit = hitTest(pointer.x, pointer.y, performance.now());
+      hoveredId = hit ? hit.id : null;
+      root.style.cursor = hit ? 'pointer' : '';
+    }
+
+    function onPointerLeave() {
+      pointer.active = false;
+      hoveredId = null;
+      root.style.cursor = '';
+    }
+
+    async function onClick() {
+      if (!hoveredId) return;
+      const node = getNode(hoveredId);
+      if (!node) return;
+      const c = nodeCenter(node, performance.now());
+      // 复用 transitions 库的 pickTransition,不再自实现
+      const mod = await import('../transitions');
+      const transition = mod.pickTransition();
+      transition.play({
+        center: { x: c.x, y: c.y },
+        radius: c.r * 1.4,
+        targetUrl: node.href,
+      });
+    }
+
+    function onVisibility() {
+      paused = document.hidden;
+    }
+
+    resize();
+    window.addEventListener('resize', resize);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerleave', onPointerLeave);
+    window.addEventListener('click', onClick);
+    document.addEventListener('visibilitychange', onVisibility);
+    frame = requestAnimationFrame(render);
+
+    document.addEventListener('astro:before-swap', () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerleave', onPointerLeave);
+      window.removeEventListener('click', onClick);
+      document.removeEventListener('visibilitychange', onVisibility);
+    }, { once: true });
+  }
+
+  const roots = document.querySelectorAll<HTMLElement>('[data-constellation]');
+  roots.forEach(makeConstellation);
+</script>
+
+<style>
+  .constellation {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(29, 78, 216, 0.03), transparent 28rem),
+      linear-gradient(180deg, rgba(251, 250, 247, 0.7), rgba(245, 242, 235, 0.85));
+    opacity: 0;
+    animation: constellation-fade 1.2s ease 200ms both;
+  }
+
+  .constellation canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .constellation__vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 50% 50%, transparent 55%, rgba(251, 250, 247, 0.32) 100%);
+  }
+
+  .constellation-label {
+    position: fixed;
+    left: 0;
+    top: 0;
+    --lx: 50%;
+    --ly: 50%;
+    --lc: rgba(23, 24, 28, 0.8);
+    transform: translate(var(--lx), var(--ly)) translate(-50%, -100%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 200ms ease, transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    text-align: center;
+    color: var(--lc);
+    z-index: 8;
+  }
+
+  .constellation-label.is-visible {
+    opacity: 1;
+  }
+
+  .constellation-label__main {
+    display: block;
+    font-family: var(--font-italic);
+    font-style: italic;
+    font-size: 1.3rem;
+    line-height: 1.1;
+    letter-spacing: 0.01em;
+  }
+
+  .constellation-label__sub {
+    display: block;
+    margin-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: rgba(23, 24, 28, 0.45);
+  }
+
+  @keyframes constellation-fade {
+    from { opacity: 0; transform: scale(1.02); }
+    to { opacity: 1; transform: scale(1); }
+  }
+</style>

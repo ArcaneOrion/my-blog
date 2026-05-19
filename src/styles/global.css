@@ -272,6 +272,123 @@
     min-height: calc(100vh - 4rem);
   }
 
+  /* Gateway 终点仪式 stage:中心大字"入口"+ 圆环(canvas 渲染) */
+  .home-stage--portal {
+    min-height: 100vh;
+  }
+
+  .portal-hero {
+    margin-top: 12vh;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  .portal-label {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.42em;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+  }
+
+  .portal-title {
+    margin-top: 1.4rem;
+    font-family: var(--font-italic);
+    font-style: italic;
+    font-size: clamp(1.8rem, 3.2vw, 2.8rem);
+    line-height: 1.35;
+    color: var(--color-text);
+    font-weight: 400;
+    --narrative-base-tracking: 0;
+    --narrative-stretch-amp: 0.006em;
+    --narrative-window: 0.6;
+  }
+
+  .portal-title-em {
+    color: var(--color-math);
+    font-style: italic;
+  }
+
+  /* === Hero 区:嵌入式叙事链(名字 → 坐标属性 → 座右铭) === */
+  .hero-frame {
+    max-width: 64rem;
+    padding-top: 3.5rem;
+  }
+
+  .hero-meta {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.42em;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+    animation: fade-in 900ms ease 120ms both;
+  }
+
+  .hero-name {
+    display: inline-block;
+    margin-top: 2.4rem;
+    font-family: var(--font-display);
+    font-size: clamp(3.5rem, 9.5vw, 7.4rem);
+    line-height: 1;
+    color: var(--color-text);
+    font-weight: 400;
+    --narrative-base-tracking: -0.02em;
+    --narrative-stretch-amp: 0.008em;
+    --narrative-stagger: 0;
+    --narrative-window: 0.45;
+  }
+
+  .hero-name-sep {
+    color: var(--color-math);
+    margin: 0 0.12em;
+    font-style: normal;
+    /* "·"作为坐标系 origin,有微妙光晕 */
+    text-shadow: 0 0 18px rgba(29, 78, 216, 0.32);
+  }
+
+  .hero-coord {
+    margin: 1.4rem 0 0;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+    --narrative-base-tracking: 0.28em;
+    --narrative-stretch-amp: 0.03em;
+    --narrative-stagger: 0.25;
+    --narrative-window: 0.45;
+  }
+
+  .hero-coord-arrow {
+    color: var(--color-math);
+    margin-right: 0.5em;
+  }
+
+  .hero-motto {
+    margin: 3.6rem 0 0;
+    max-width: 28rem;
+    font-family: var(--font-italic);
+    font-style: italic;
+    font-size: clamp(1.2rem, 1.9vw, 1.55rem);
+    line-height: 1.85;
+    color: var(--color-text);
+    --narrative-base-tracking: 0;
+    --narrative-stretch-amp: 0.008em;
+    --narrative-stagger: 0.5;
+    --narrative-window: 0.45;
+  }
+
+  .portal-sub {
+    margin: 1.6rem 0 0;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.42em;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+  }
+
   .ghost-copy {
     color: color-mix(in srgb, var(--color-text-secondary) 72%, transparent);
     opacity: 0.72;
@@ -356,9 +473,15 @@
   .narrative-hero {
     --narrative-p: 0;
     --narrative-stretch: 0;
-    opacity: var(--narrative-p);
-    /* 原 tracking-[-0.03em] 等价 -0.03em,叠加微妙呼吸 */
-    letter-spacing: calc(-0.03em + var(--narrative-stretch) * 0.012em);
+    /* 默认 letter-spacing 行为:base + stretch 微妙呼吸 */
+    --narrative-base-tracking: -0.03em;
+    --narrative-stretch-amp: 0.012em;
+    /* stagger:让多个 narrative-hero 元素错峰浮现 */
+    --narrative-stagger: 0;
+    --narrative-window: 1;
+    --narrative-local-p: max(0, min(1, calc((var(--narrative-p) - var(--narrative-stagger)) / var(--narrative-window))));
+    opacity: var(--narrative-local-p);
+    letter-spacing: calc(var(--narrative-base-tracking) + var(--narrative-stretch) * var(--narrative-stretch-amp));
     will-change: opacity;
   }
 

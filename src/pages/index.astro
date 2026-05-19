@@ -28,9 +28,9 @@ const narrativeAlign: Record<string, 'left' | 'right' | 'center-bottom' | 'cente
     <p data-sys-line="object" class="text-arcane-text-dim/60">{heroScene.sysInfo.object}</p>
   </aside>
 
-  {/* Narrative 层：诗句独立浮层，由 canvas scene 几何锚点驱动 */}
+  {/* Narrative 层：诗句独立浮层，由 canvas scene 几何锚点驱动 (gateway 不走 narrative,改用 HTML hero) */}
   <div class="narrative-layer" aria-hidden="false">
-    {sectionScenes.map((scene) => (
+    {sectionScenes.filter((scene) => scene.id !== 'gateway').map((scene) => (
       <div
         class="narrative-quote"
         data-narrative-scene={scene.id}
@@ -45,37 +45,62 @@ const narrativeAlign: Record<string, 'left' | 'right' | 'center-bottom' | 'cente
 
   <div class="relative z-10 page-fade-in">
     <main class="relative">
-      {/* Hero: entry scene，保留现有 fade-in 排版（不走 narrative） */}
+      {/* Hero: entry scene,叙事链 - 名字 → 坐标属性 → 座右铭 */}
       <section
         class="page-shell home-stage home-stage--hero relative flex items-center"
         data-stage={heroScene.id}
       >
-        <div class="max-w-5xl pt-10">
-          <p class="fade-in-delay-1 font-mono text-[0.62rem] uppercase tracking-[0.42em] text-arcane-text-dim">
-            mathematics · structure · mystery
-          </p>
+        <div class="hero-frame">
+          <p class="hero-meta">mathematics · structure · mystery</p>
 
           <h1
-            class="narrative-hero mt-10 font-display text-[clamp(5.5rem,17vw,15rem)] font-normal leading-[0.82] text-arcane-text"
+            class="hero-name narrative-hero"
             data-narrative-scene="entry"
             data-hero-title
           >
-            Arcane<span class="text-arcane-math">.</span><br />
-            Orion
+            <span>Arcane</span><span class="hero-name-sep">·</span><span>Orion</span>
           </h1>
 
-          <p class="fade-in-delay-3 mt-10 max-w-xl text-[1.1rem] leading-[1.9] text-arcane-text-secondary md:text-[1.18rem]">
-            {italicLines(heroScene.copy.italicCopy).map((line) => (
-              <span class="italic block" style="font-family: var(--font-italic); font-weight: 400;">
-                {line || ' '}
-              </span>
-            ))}
+          <p
+            class="hero-coord narrative-hero"
+            data-narrative-scene="entry"
+          >
+            <span class="hero-coord-arrow">↳</span>origin · (0, 0) · observer of structure
+          </p>
+
+          <p
+            class="hero-motto narrative-hero"
+            data-narrative-scene="entry"
+          >
+            <span class="block">没有结构，</span>
+            <span class="block">就没有理解。</span>
           </p>
         </div>
       </section>
 
-      {/* 4 个 stage：诗句已外移到 narrative 层，section 内只剩 sectionLabel + sideNote */}
+      {/* 4 个 stage:gateway 独立设计为终点仪式;前 3 个用 grid 模板 */}
       {sectionScenes.map((scene) => {
+        if (scene.id === 'gateway') {
+          return (
+            <section
+              class="page-shell home-stage home-stage--portal relative flex flex-col items-center justify-start"
+              data-stage={scene.id}
+            >
+              <div class="portal-hero">
+                <p class="portal-label">portal</p>
+                <h2
+                  class="portal-title narrative-hero"
+                  data-narrative-scene="gateway"
+                  data-portal-title
+                >
+                  推开一扇门<br/><span class="portal-title-em">进入世界</span>
+                </h2>
+                <p class="portal-sub">press · the · ring · to · cross</p>
+              </div>
+            </section>
+          );
+        }
+
         const textOnLeft = scene.anchor.x > 0.5;
         return (
           <section
@@ -151,16 +176,32 @@ const narrativeAlign: Record<string, 'left' | 'right' | 'center-bottom' | 'cente
     if (stages.length > 0) {
       dispatchStage(stages[0].getAttribute('data-stage') || scenes[0].id);
 
-      const stageObserver = new IntersectionObserver((entries) => {
-        const active = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      // 维护每个 stage 的最近 intersectionRatio
+      // IntersectionObserver 的 entries 只包含发生变化的元素,不是所有被观察元素;
+      // 如果只看 entries 选 max,会在回滚后下滑时漏掉真正 active 的 stage(它没变化所以不在 entries 里)。
+      const ratios = new Map<Element, number>();
+      stages.forEach((stage) => ratios.set(stage, 0));
 
-        if (active) {
-          dispatchStage(active.target.getAttribute('data-stage') || scenes[0].id);
+      const stageObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          ratios.set(entry.target, entry.intersectionRatio);
+        }
+
+        // 从全集选 ratio 最大且仍 visible 的
+        let bestStage: Element | null = null;
+        let bestRatio = 0;
+        for (const [el, ratio] of ratios) {
+          if (ratio > bestRatio) {
+            bestRatio = ratio;
+            bestStage = el;
+          }
+        }
+
+        if (bestStage && bestRatio > 0) {
+          dispatchStage(bestStage.getAttribute('data-stage') || scenes[0].id);
         }
       }, {
-        threshold: [0.08, 0.25, 0.5],
+        threshold: [0.08, 0.25, 0.5, 0.75],
       });
 
       stages.forEach((stage) => stageObserver.observe(stage));
@@ -180,16 +221,24 @@ const narrativeAlign: Record<string, 'left' | 'right' | 'center-bottom' | 'cente
         return;
       }
       const rect = heroTitle.getBoundingClientRect();
-      // 估算大字 "." 位置:第一行 "Arcane." 末尾,占大字 width 约 0.38-0.42,y 约 line 1 baseline
-      // 大字 2 行 leading 0.82,第一行 baseline 约 height * 0.42
+      // 单行 "Arcane · Orion",dot 在中央偏左
+      // 估算 "·" 大致位置:Arcane 长度 6 字符 + 间隔,占 width 约 0.45
+      const sepEl = heroTitle.querySelector('.hero-name-sep') as HTMLElement | null;
+      let dotX = rect.left + rect.width * 0.45;
+      let dotY = rect.top + rect.height * 0.62;
+      if (sepEl) {
+        const sepRect = sepEl.getBoundingClientRect();
+        dotX = sepRect.left + sepRect.width / 2;
+        dotY = sepRect.top + sepRect.height * 0.62;
+      }
       (window as any).__heroBox = {
         x: rect.left,
         y: rect.top,
         w: rect.width,
         h: rect.height,
-        baselineY: rect.top + rect.height * 0.92,
-        dotX: rect.left + rect.width * 0.40,
-        dotY: rect.top + rect.height * 0.42,
+        baselineY: rect.top + rect.height * 0.86,
+        dotX,
+        dotY,
       };
     }
     updateHeroBox();
