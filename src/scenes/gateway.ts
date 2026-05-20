@@ -1,14 +1,14 @@
 // Gateway scene：博客入口 — 滚动终点站
 // 数学语义：所有结构收束于一个圆环 — 门;
-//          周围 5 个对应五星球的小卫星点(暗示门后是五个空间);
+//          周围 5 个对应结构域的小节点(暗示门后是五个投影场);
 //          外层一圈淡矩形门框,强化"入口"感
 // 点击圆环（半径 1.2x 范围内）触发随机过渡动画
 
 import type { SceneSpec, SceneCtx } from './types';
 import { rgba } from './types';
 
-// 五星球的颜色,用于卫星点
-const PLANET_COLORS: Array<[number, number, number]> = [
+// 五个结构域的颜色,用于外圈节点
+const DOMAIN_COLORS: Array<[number, number, number]> = [
   [29, 78, 216],   // math
   [190, 24, 93],   // ai
   [15, 118, 110],  // quant
@@ -50,7 +50,7 @@ export const gatewayScene: SceneSpec = {
     glyph: '○',
     // 去掉 "iv." 编号——脱离 i/ii/iii 数学序列,作为独立的"入口"终点
     sectionLabel: 'portal',
-    italicCopy: '五个空间，\n各自的轨道。\n\n推门进入。',
+    italicCopy: '五个结构域，\n各自投影。\n\n推门进入。',
     sideNote: 'ai · math · quant\nself · journal',
   },
 
@@ -141,7 +141,7 @@ export const gatewayScene: SceneSpec = {
       ctx.stroke();
     }
 
-    // === 2. 五颗卫星点:对应五星球,绕主圆环外圈缓慢公转 ===
+    // === 2. 五个结构域节点:围绕主圆环缓慢漂移 ===
     const satRadius = dynRadius * 1.55;
     const orbitSpeed = 0.00008;
     for (let i = 0; i < 5; i += 1) {
@@ -150,7 +150,7 @@ export const gatewayScene: SceneSpec = {
       const sx = cx + Math.cos(angle) * satRadius;
       const sy = cy + Math.sin(angle) * satRadius;
 
-      const sc = PLANET_COLORS[i];
+      const sc = DOMAIN_COLORS[i];
       // 光晕
       const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, 12);
       grad.addColorStop(0, rgba(sc, 0.45 + hover * 0.25));
@@ -160,13 +160,13 @@ export const gatewayScene: SceneSpec = {
       ctx.arc(sx, sy, 12, 0, Math.PI * 2);
       ctx.fill();
 
-      // 卫星本体
+      // 外圈节点本体
       ctx.fillStyle = rgba(sc, 0.78);
       ctx.beginPath();
       ctx.arc(sx, sy, 2.6, 0, Math.PI * 2);
       ctx.fill();
 
-      // 从卫星向圆环画一根细线(只在 hover 时显示)
+      // 从外圈节点向圆环画一根细线(只在 hover 时显示)
       if (hover > 0.15) {
         const innerX = cx + Math.cos(angle) * dynRadius;
         const innerY = cy + Math.sin(angle) * dynRadius;

@@ -232,6 +232,10 @@
     height: 100%;
   }
 
+  .structure-field[data-projection="true"] {
+    animation-duration: 900ms;
+  }
+
   .structure-field__vignette {
     position: absolute;
     inset: 0;
@@ -644,3 +648,4 @@
     opacity: 0;
   }
 }
+
