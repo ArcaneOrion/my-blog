@@ -89,12 +89,12 @@ const allTags = [...new Set(posts.flatMap(post => post.data.tags))];
 </BaseLayout>
 
 <script>
-  const buttons = document.querySelectorAll('.tag-filter');
-  const posts = document.querySelectorAll('.post-item');
+  const buttons = document.querySelectorAll<HTMLElement>('.tag-filter');
+  const posts = document.querySelectorAll<HTMLElement>('.post-item');
   
   buttons.forEach(btn => {
     btn.addEventListener('click', () => {
-      const tag = btn.getAttribute('data-tag');
+      const tag = btn.dataset.tag || 'all';
       
       buttons.forEach(b => {
         b.classList.remove('border-arcane-math/40', 'bg-arcane-math/10', 'text-arcane-math');

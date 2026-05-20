@@ -1,58 +1,82 @@
 ---
-// Constellation: 3D 五节点星座导航
-// 使用 Three.js 渲染 3D 星系星球，融合极简美学 (暖白底 + 深色几何线条)。
-// 包含 5 个 domain 作为 3D 星球节点（参考 3.html 的行星系统构造：点、环、几何骨架），以不同层级公转自转。
-// 鼠标交互：射线探测，Hover 变焦、加速自转、底部/标签展示相对应的维度信息。
-// 点击星球：3D ZOOMING_IN 变焦穿梭，摄像机极速逼近穿透该星球，实现向对应博客分类页面的华丽跳转。
 ---
 
-<div class="constellation" data-constellation>
-  <!-- 3D 渲染容器 -->
-  <div class="constellation__canvas-container" data-constellation-container></div>
-  <div class="constellation__vignette"></div>
-  <div class="constellation-label" data-constellation-label aria-live="polite"></div>
+<div class="world-manifold" data-constellation>
+  <div class="world-manifold__canvas" data-constellation-container></div>
+
+  <header class="world-manifold__header">
+    <p class="world-manifold__eyebrow">WORLD MANIFOLD // 五世界观测场</p>
+    <h1>Arcane Observatory</h1>
+    <div class="world-manifold__equation" data-equation-display>
+      Attractor Equations (Overview):<br />
+      dx/dt = σ(y - x)<br />
+      dy/dt = x(ρ - z) - y<br />
+      dz/dt = xy - βz
+    </div>
+  </header>
+
+  <div class="world-manifold-label" data-constellation-label aria-live="polite"></div>
+
+  <button class="world-manifold__reset" type="button" data-reset-view>RESET VIEW</button>
+
+  <aside class="world-panel" data-world-panel aria-live="polite">
+    <p class="world-panel__index" data-world-index>NULL SET</p>
+    <h2 data-world-title>VOID</h2>
+    <p class="world-panel__glyph" data-world-glyph>∅</p>
+    <p class="world-panel__body" data-world-body>Choose a manifold node to unfold one world.</p>
+    <dl class="world-panel__meta">
+      <div>
+        <dt>space</dt>
+        <dd data-world-space>∅</dd>
+      </div>
+      <div>
+        <dt>state</dt>
+        <dd data-world-state>unobserved</dd>
+      </div>
+    </dl>
+    <button class="world-panel__enter" type="button" data-enter-world>ENTER WORLD</button>
+  </aside>
 </div>
 
 <script>
   import * as THREE from 'three';
 
   type ColorTuple = [number, number, number];
+  type SystemState = 'OVERVIEW' | 'FOCUSED' | 'ENTERING';
 
   interface NodeData {
     id: string;
     label: string;
+    title: string;
     sub: string;
+    content: string;
     glyph: string;
-    color: number; // 3D 中使用 hex
+    color: number;
     colorTuple: ColorTuple;
     href: string;
-    // 3D 轨道参数
-    orbitRadius: number;
-    orbitSpeed: number;
-    orbitAngle: number;
-    orbitIncline: number; // 轨道倾角 (弧度)
+    position: THREE.Vector3;
     planetSize: number;
     layer: 'tech' | 'humane';
-    // 行星细节设计类型
     type: 'icosahedron_ring' | 'octahedron_core' | 'dodecahedron_grid' | 'tetrahedron_cloud' | 'ring_particles';
+    paramChange: { sigma: number; rho: number; beta: number };
   }
 
   const palette = {
-    math:    0x1d4ed8, // [29, 78, 216]
-    ai:      0xbe185d, // [190, 24, 93]
-    quant:   0x0f766e, // [15, 118, 110]
-    self:    0x7c3aed, // [124, 58, 237]
-    journal: 0xb08940, // [176, 137, 64]
-    ink:     0x17181c, // [23, 24, 28]
+    math: 0x1d4ed8,
+    ai: 0xbe185d,
+    quant: 0x0f766e,
+    self: 0x7c3aed,
+    journal: 0xb08940,
+    ink: 0x17181c,
   };
 
   const paletteTuple: Record<string, ColorTuple> = {
-    math:    [29, 78, 216],
-    ai:      [190, 24, 93],
-    quant:   [15, 118, 110],
-    self:    [124, 58, 237],
+    math: [29, 78, 216],
+    ai: [190, 24, 93],
+    quant: [15, 118, 110],
+    self: [124, 58, 237],
     journal: [176, 137, 64],
-    ink:     [23, 24, 28],
+    ink: [23, 24, 28],
   };
 
   function rgbStyle(c: ColorTuple, a: number): string {
@@ -63,11 +87,33 @@
     if (root.dataset.constellationReady === 'true') return;
     root.dataset.constellationReady = 'true';
 
-    const container = root.querySelector<HTMLDivElement>('[data-constellation-container]');
-    const labelEl = root.querySelector<HTMLDivElement>('[data-constellation-label]');
-    if (!container || !labelEl) return;
+    const containerMaybe = root.querySelector<HTMLDivElement>('[data-constellation-container]');
+    const labelMaybe = root.querySelector<HTMLDivElement>('[data-constellation-label]');
+    const panelMaybe = root.querySelector<HTMLElement>('[data-world-panel]');
+    const resetMaybe = root.querySelector<HTMLButtonElement>('[data-reset-view]');
+    const enterMaybe = root.querySelector<HTMLButtonElement>('[data-enter-world]');
+    const equationMaybe = root.querySelector<HTMLElement>('[data-equation-display]');
+    const worldIndexMaybe = root.querySelector<HTMLElement>('[data-world-index]');
+    const worldTitleMaybe = root.querySelector<HTMLElement>('[data-world-title]');
+    const worldGlyphMaybe = root.querySelector<HTMLElement>('[data-world-glyph]');
+    const worldBodyMaybe = root.querySelector<HTMLElement>('[data-world-body]');
+    const worldSpaceMaybe = root.querySelector<HTMLElement>('[data-world-space]');
+    const worldStateMaybe = root.querySelector<HTMLElement>('[data-world-state]');
+    if (!containerMaybe || !labelMaybe || !panelMaybe || !resetMaybe || !enterMaybe || !equationMaybe || !worldIndexMaybe || !worldTitleMaybe || !worldGlyphMaybe || !worldBodyMaybe || !worldSpaceMaybe || !worldStateMaybe) return;
 
-    // 获取 sys-info 的元素以便更新 status / object
+    const container = containerMaybe;
+    const labelEl = labelMaybe;
+    const panelEl = panelMaybe;
+    const resetBtn = resetMaybe;
+    const enterBtn = enterMaybe;
+    const equationEl = equationMaybe;
+    const worldIndexEl = worldIndexMaybe;
+    const worldTitleEl = worldTitleMaybe;
+    const worldGlyphEl = worldGlyphMaybe;
+    const worldBodyEl = worldBodyMaybe;
+    const worldSpaceEl = worldSpaceMaybe;
+    const worldStateEl = worldStateMaybe;
+
     const sysStateEl = document.querySelector('[data-sys-state]');
     const sysStatusEl = document.querySelector('[data-sys-status]');
     const sysObjectEl = document.querySelector('[data-sys-object]');
@@ -81,32 +127,95 @@
     let width = container.clientWidth || window.innerWidth;
     let height = container.clientHeight || window.innerHeight;
 
-    // 1. Scene, Camera, Renderer
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xfbfaf7); // 极简暖白
-    scene.fog = new THREE.FogExp2(0xfbfaf7, 0.015);
+    scene.background = new THREE.Color(0xfcfcfd);
+    scene.fog = new THREE.FogExp2(0xfcfcfd, 0.024);
 
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-    const cameraDefaultPos = new THREE.Vector3(0, 10, 36);
-    camera.position.copy(cameraDefaultPos);
-    camera.lookAt(0, 0, 0);
+    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
+    const defaultCameraPos = new THREE.Vector3(0, 13, 32);
+    const cameraTarget = new THREE.Vector3(0, 0, 0);
+    const targetCameraPos = defaultCameraPos.clone();
+    const targetLookAt = new THREE.Vector3(0, 0, 0);
+    camera.position.copy(defaultCameraPos);
+    camera.lookAt(cameraTarget);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     container.appendChild(renderer.domElement);
 
-    // 2. 交互状态
+    scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+    const dirLight = new THREE.DirectionalLight(0xfff5ea, 0.45);
+    dirLight.position.set(10, 28, 14);
+    scene.add(dirLight);
+
+    const gridGroup = new THREE.Group();
+    const gridMat = new THREE.MeshBasicMaterial({
+      color: 0xdadce5,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
+    });
+    [10, 18, 27].forEach((radius) => {
+      const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius, 24, 16), gridMat.clone());
+      gridGroup.add(sphere);
+    });
+    scene.add(gridGroup);
+
+    const lorenzParams = { sigma: 10, rho: 28, beta: 8 / 3, speedScale: 1 };
+    const lorenzTargets = { sigma: 10, rho: 28, beta: 8 / 3, speedScale: 1 };
+    const lorenzGeometry = new THREE.BufferGeometry();
+    const lorenzMaterial = new THREE.LineBasicMaterial({
+      color: 0xcca050,
+      transparent: true,
+      opacity: 0.44,
+    });
+    const lorenzLine = new THREE.Line(lorenzGeometry, lorenzMaterial);
+    scene.add(lorenzLine);
+
+    function rebuildLorenz() {
+      const points: THREE.Vector3[] = [];
+      let x = 0.1;
+      let y = 0;
+      let z = 0;
+      const dt = 0.008;
+      for (let i = 0; i < 2200; i++) {
+        const dx = lorenzParams.sigma * (y - x) * dt;
+        const dy = (x * (lorenzParams.rho - z) - y) * dt;
+        const dz = (x * y - lorenzParams.beta * z) * dt;
+        x += dx;
+        y += dy;
+        z += dz;
+        points.push(new THREE.Vector3(x * 0.35, (z - 25) * 0.35, y * 0.35));
+      }
+      lorenzGeometry.setFromPoints(points);
+    }
+
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     let hoveredNode: NodeData | null = null;
-    let selectedNode: NodeData | null = null;
-    let systemState: 'ORBIT' | 'ZOOMING_IN' | 'TRANSITION_COMPLETE' = 'ORBIT';
+    let focusedNode: NodeData | null = null;
+    let systemState: SystemState = 'OVERVIEW';
     let transitionProgress = 0;
-    let pointerActive = false;
     let paused = false;
+    let pointerStartX = 0;
+    let pointerStartY = 0;
+    let pointerLastX = 0;
+    let pointerLastY = 0;
+    let dragDistance = 0;
+    let isDraggingView = false;
+    let hasNavigated = false;
+    const defaultOrbit = {
+      theta: 0,
+      phi: Math.acos(defaultCameraPos.y / defaultCameraPos.length()),
+      radius: defaultCameraPos.length(),
+    };
+    const orbit = { ...defaultOrbit };
+    const orbitTarget = { ...defaultOrbit };
+    const enteringStartCamera = new THREE.Vector3();
+    const enteringStartLookAt = new THREE.Vector3();
 
-    // 3. 构建数据
     const blogRoot = (window as any).__BLOG_BASE__ || '';
     const url = (p: string) => {
       const base = blogRoot.endsWith('/') ? blogRoot : `${blogRoot}/`;
@@ -118,247 +227,178 @@
       {
         id: 'math',
         label: 'Mathematics',
+        title: 'DIMENSION A // 数学结构',
         sub: 'proof · abstraction · invariant',
+        content: '这里是关于证明、分析、拓扑与抽象结构的世界。数学不是装饰符号，而是观察世界时保留下来的不变量。',
         glyph: '∂',
         color: palette.math,
         colorTuple: paletteTuple.math,
         href: url('/math/'),
-        orbitRadius: 13,
-        orbitSpeed: 0.0035,
-        orbitAngle: 0,
-        orbitIncline: 0.08,
+        position: new THREE.Vector3(-10, 2, 3),
         planetSize: 1.8,
         layer: 'tech',
-        type: 'icosahedron_ring'
+        type: 'icosahedron_ring',
+        paramChange: { sigma: 15, rho: 12, beta: 2.0 },
       },
       {
         id: 'ai',
         label: 'Artificial Intelligence',
+        title: 'DIMENSION B // 递归智能',
         sub: 'agency · context · optimization',
+        content: '这里记录 agent、上下文工程、自我迭代与智能系统。节点像一个会回看自身状态的递归核心。',
         glyph: 'λ',
         color: palette.ai,
         colorTuple: paletteTuple.ai,
         href: url('/ai/'),
-        orbitRadius: 12,
-        orbitSpeed: 0.0045,
-        orbitAngle: Math.PI * 0.66,
-        orbitIncline: -0.05,
+        position: new THREE.Vector3(8, 4, -4),
         planetSize: 1.9,
         layer: 'tech',
-        type: 'octahedron_core'
+        type: 'octahedron_core',
+        paramChange: { sigma: 10, rho: 40, beta: 8 / 3 },
       },
       {
         id: 'quant',
         label: 'Quantitative Thinking',
+        title: 'DIMENSION C // 市场相空间',
         sub: 'signal · risk · feedback',
+        content: '这里承载量化思维、动量、风险曲面与反馈系统。价格不是点，而是噪声、信号和约束共同生成的轨迹。',
         glyph: 'σ',
         color: palette.quant,
         colorTuple: paletteTuple.quant,
         href: url('/quant/'),
-        orbitRadius: 14,
-        orbitSpeed: 0.003,
-        orbitAngle: Math.PI * 1.33,
-        orbitIncline: 0.12,
+        position: new THREE.Vector3(10, -4, 3),
         planetSize: 1.7,
         layer: 'tech',
-        type: 'dodecahedron_grid'
+        type: 'dodecahedron_grid',
+        paramChange: { sigma: 4, rho: 28, beta: 4.0 },
       },
       {
         id: 'self',
         label: 'Self',
+        title: 'DIMENSION D // 观测者原点',
         sub: 'observer · origin · profile',
+        content: '这里不是履历页，而是坐标系的原点：谁在观察、以什么方式学习、用什么问题组织自己的轨道。',
         glyph: '·',
         color: palette.self,
         colorTuple: paletteTuple.self,
         href: url('/about/'),
-        orbitRadius: 7.5,
-        orbitSpeed: 0.006,
-        orbitAngle: Math.PI * 0.3,
-        orbitIncline: -0.15,
-        planetSize: 1.1,
+        position: new THREE.Vector3(-4, -6, -7),
+        planetSize: 1.15,
         layer: 'humane',
-        type: 'tetrahedron_cloud'
+        type: 'tetrahedron_cloud',
+        paramChange: { sigma: 7, rho: 22, beta: 3.2 },
       },
       {
         id: 'journal',
         label: 'Journal',
+        title: 'DIMENSION E // 漂移日志',
         sub: 'drift · note · state',
+        content: '这里保存阶段性笔记、状态切片与未完成的观察。它不像文章那样闭合，更像仍在运动的时间环。',
         glyph: '∿',
         color: palette.journal,
         colorTuple: paletteTuple.journal,
         href: url('/journal/'),
-        orbitRadius: 8.5,
-        orbitSpeed: 0.005,
-        orbitAngle: Math.PI * 1.1,
-        orbitIncline: 0.18,
-        planetSize: 1.1,
+        position: new THREE.Vector3(0, 1, 9),
+        planetSize: 1.15,
         layer: 'humane',
-        type: 'ring_particles'
-      }
+        type: 'ring_particles',
+        paramChange: { sigma: 12, rho: 34, beta: 2.25 },
+      },
     ];
 
-    // 4. 在 Scene 中实例化 3D 几何星球
-    const planetsGroup = new THREE.Group();
-    scene.add(planetsGroup);
+    const nodesGroup = new THREE.Group();
+    scene.add(nodesGroup);
 
-    interface PlanetObject {
+    interface WorldObject {
       data: NodeData;
       group: THREE.Group;
       coreMesh: THREE.Mesh | THREE.Points;
       outerStructures: THREE.Object3D[];
-      currentAngle: number;
-      actualPos: THREE.Vector3;
+      basePosition: THREE.Vector3;
     }
 
-    const planets: PlanetObject[] = [];
+    const worlds: WorldObject[] = [];
+    const raycastTargets: THREE.Object3D[] = [];
 
-    // 辅助创建细线条圆环 (作为星球的轨道环)
-    function createPlanetRing(radius: number, color: number, opacity = 0.12) {
-      const geometry = new THREE.RingGeometry(radius - 0.03, radius + 0.03, 64);
-      const material = new THREE.MeshBasicMaterial({
-        color: color,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: opacity,
-        depthWrite: false
-      });
-      const ring = new THREE.Mesh(geometry, material);
-      ring.rotation.x = Math.PI / 2;
-      return ring;
-    }
-
-    nodesData.forEach((node) => {
+    function createNodeObject(node: NodeData) {
       const pGroup = new THREE.Group();
+      pGroup.position.copy(node.position);
       pGroup.userData = { id: node.id };
 
       const outerStructures: THREE.Object3D[] = [];
       let coreMesh: THREE.Mesh | THREE.Points;
 
-      // 不同的行星系统构造：点、环、几何骨架
       if (node.type === 'icosahedron_ring') {
-        // Math: 二十面体骨架 + 一个外围倾斜旋转细环
-        const geom = new THREE.IcosahedronGeometry(node.planetSize, 1);
-        const mat = new THREE.MeshBasicMaterial({
-          color: node.color,
-          wireframe: true,
-          transparent: true,
-          opacity: 0.18
-        });
-        coreMesh = new THREE.Mesh(geom, mat);
+        coreMesh = new THREE.Mesh(
+          new THREE.IcosahedronGeometry(node.planetSize, 1),
+          new THREE.MeshBasicMaterial({ color: node.color, wireframe: true, transparent: true, opacity: 0.2 }),
+        );
         pGroup.add(coreMesh);
 
-        // 外层细环
-        const ringGeom = new THREE.RingGeometry(node.planetSize * 1.35 - 0.02, node.planetSize * 1.35 + 0.02, 48);
-        const ringMat = new THREE.MeshBasicMaterial({
-          color: node.color,
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.22
-        });
-        const ring = new THREE.Mesh(ringGeom, ringMat);
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(node.planetSize * 1.35 - 0.02, node.planetSize * 1.35 + 0.02, 56),
+          new THREE.MeshBasicMaterial({ color: node.color, side: THREE.DoubleSide, transparent: true, opacity: 0.26 }),
+        );
         ring.rotation.x = Math.PI / 2.3;
         ring.rotation.y = Math.PI / 8;
         pGroup.add(ring);
         outerStructures.push(ring);
-
       } else if (node.type === 'octahedron_core') {
-        // AI: 八面体网格骨架 + 内部紧凑的十二面体核心 + 一个垂直旋转星环
-        const outerGeom = new THREE.OctahedronGeometry(node.planetSize, 1);
-        const outerMat = new THREE.MeshBasicMaterial({
-          color: node.color,
-          wireframe: true,
-          transparent: true,
-          opacity: 0.16
-        });
-        const outerMesh = new THREE.Mesh(outerGeom, outerMat);
+        const outerMesh = new THREE.Mesh(
+          new THREE.OctahedronGeometry(node.planetSize, 1),
+          new THREE.MeshBasicMaterial({ color: node.color, wireframe: true, transparent: true, opacity: 0.18 }),
+        );
         pGroup.add(outerMesh);
         outerStructures.push(outerMesh);
 
-        const innerGeom = new THREE.DodecahedronGeometry(node.planetSize * 0.42, 0);
-        const innerMat = new THREE.MeshBasicMaterial({
-          color: node.color,
-          wireframe: false,
-          transparent: true,
-          opacity: 0.12
-        });
-        coreMesh = new THREE.Mesh(innerGeom, innerMat);
+        coreMesh = new THREE.Mesh(
+          new THREE.DodecahedronGeometry(node.planetSize * 0.42, 0),
+          new THREE.MeshBasicMaterial({ color: node.color, transparent: true, opacity: 0.14 }),
+        );
         pGroup.add(coreMesh);
 
-        // 垂直细环
-        const ringGeom = new THREE.RingGeometry(node.planetSize * 1.4 - 0.02, node.planetSize * 1.4 + 0.02, 48);
-        const ringMat = new THREE.MeshBasicMaterial({
-          color: node.color,
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.2
-        });
-        const ring = new THREE.Mesh(ringGeom, ringMat);
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(node.planetSize * 1.4 - 0.02, node.planetSize * 1.4 + 0.02, 56),
+          new THREE.MeshBasicMaterial({ color: node.color, side: THREE.DoubleSide, transparent: true, opacity: 0.22 }),
+        );
         ring.rotation.y = Math.PI / 2;
         pGroup.add(ring);
         outerStructures.push(ring);
-
       } else if (node.type === 'dodecahedron_grid') {
-        // Quant: 十二面体骨架 + 点状阵列层 (用 Points 粒子做嵌套球)
-        const geom = new THREE.DodecahedronGeometry(node.planetSize, 1);
-        const mat = new THREE.MeshBasicMaterial({
-          color: node.color,
-          wireframe: true,
-          transparent: true,
-          opacity: 0.15
-        });
-        const mesh = new THREE.Mesh(geom, mat);
+        const mesh = new THREE.Mesh(
+          new THREE.DodecahedronGeometry(node.planetSize, 1),
+          new THREE.MeshBasicMaterial({ color: node.color, wireframe: true, transparent: true, opacity: 0.18 }),
+        );
         pGroup.add(mesh);
         outerStructures.push(mesh);
 
-        // 内部粒子晶格
-        const particleGeom = new THREE.IcosahedronGeometry(node.planetSize * 0.68, 1);
-        const particleMat = new THREE.PointsMaterial({
-          color: node.color,
-          size: 0.08,
-          transparent: true,
-          opacity: 0.4
-        });
-        coreMesh = new THREE.Points(particleGeom, particleMat);
+        coreMesh = new THREE.Points(
+          new THREE.IcosahedronGeometry(node.planetSize * 0.68, 1),
+          new THREE.PointsMaterial({ color: node.color, size: 0.08, transparent: true, opacity: 0.42 }),
+        );
         pGroup.add(coreMesh);
-
       } else if (node.type === 'tetrahedron_cloud') {
-        // Self: 内部小四面体 + 外层环绕极淡的虚线圆球
-        const geom = new THREE.TetrahedronGeometry(node.planetSize * 0.55, 1);
-        const mat = new THREE.MeshBasicMaterial({
-          color: node.color,
-          wireframe: true,
-          transparent: true,
-          opacity: 0.22
-        });
-        coreMesh = new THREE.Mesh(geom, mat);
+        coreMesh = new THREE.Mesh(
+          new THREE.TetrahedronGeometry(node.planetSize * 0.55, 1),
+          new THREE.MeshBasicMaterial({ color: node.color, wireframe: true, transparent: true, opacity: 0.24 }),
+        );
         pGroup.add(coreMesh);
 
-        const cloudGeom = new THREE.IcosahedronGeometry(node.planetSize * 1.1, 0);
-        const cloudMat = new THREE.MeshBasicMaterial({
-          color: node.color,
-          wireframe: true,
-          transparent: true,
-          opacity: 0.08
-        });
-        const cloudMesh = new THREE.Mesh(cloudGeom, cloudMat);
+        const cloudMesh = new THREE.Mesh(
+          new THREE.IcosahedronGeometry(node.planetSize * 1.1, 0),
+          new THREE.MeshBasicMaterial({ color: node.color, wireframe: true, transparent: true, opacity: 0.1 }),
+        );
         pGroup.add(cloudMesh);
         outerStructures.push(cloudMesh);
-
       } else {
-        // Journal: 环状粒子群 + 轻巧的双锥体
-        const geom = new THREE.OctahedronGeometry(node.planetSize * 0.5, 0);
-        const mat = new THREE.MeshBasicMaterial({
-          color: node.color,
-          wireframe: true,
-          transparent: true,
-          opacity: 0.24
-        });
-        coreMesh = new THREE.Mesh(geom, mat);
+        coreMesh = new THREE.Mesh(
+          new THREE.OctahedronGeometry(node.planetSize * 0.5, 0),
+          new THREE.MeshBasicMaterial({ color: node.color, wireframe: true, transparent: true, opacity: 0.26 }),
+        );
         pGroup.add(coreMesh);
 
-        // 外层扁平粒子圈 (用 Points 代替)
         const ringParticleGeom = new THREE.BufferGeometry();
-        const particleCount = 48;
+        const particleCount = 56;
         const positions = new Float32Array(particleCount * 3);
         const r = node.planetSize * 1.25;
         for (let i = 0; i < particleCount; i++) {
@@ -368,411 +408,291 @@
           positions[i * 3 + 2] = Math.sin(theta) * r + (Math.random() - 0.5) * 0.1;
         }
         ringParticleGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        const ringParticleMat = new THREE.PointsMaterial({
-          color: node.color,
-          size: 0.05,
-          transparent: true,
-          opacity: 0.45
-        });
-        const points = new THREE.Points(ringParticleGeom, ringParticleMat);
+        const points = new THREE.Points(
+          ringParticleGeom,
+          new THREE.PointsMaterial({ color: node.color, size: 0.05, transparent: true, opacity: 0.48 }),
+        );
         pGroup.add(points);
         outerStructures.push(points);
       }
 
-      // 添加一个隐形的 Raycast 触发用球体（稍微大一点点，方便触控和 Hover）
-      const hitGeom = new THREE.SphereGeometry(node.planetSize * 1.6, 12, 12);
-      const hitMat = new THREE.MeshBasicMaterial({
-        visible: false,
-        depthWrite: false
-      });
-      const hitMesh = new THREE.Mesh(hitGeom, hitMat);
+      const hitMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(node.planetSize * 1.8, 16, 16),
+        new THREE.MeshBasicMaterial({ visible: false, depthWrite: false }),
+      );
       hitMesh.userData = { isHitZone: true, nodeId: node.id };
       pGroup.add(hitMesh);
+      raycastTargets.push(hitMesh);
 
-      planetsGroup.add(pGroup);
+      nodesGroup.add(pGroup);
+      worlds.push({ data: node, group: pGroup, coreMesh, outerStructures, basePosition: node.position.clone() });
+    }
 
-      planets.push({
-        data: node,
-        group: pGroup,
-        coreMesh: coreMesh,
-        outerStructures: outerStructures,
-        currentAngle: node.orbitAngle,
-        actualPos: new THREE.Vector3()
-      });
-    });
+    nodesData.forEach(createNodeObject);
 
-    // 5. 建立星系轨道线 (整体作为极其淡雅的参考坐标系统)
-    const orbitsGroup = new THREE.Group();
-    scene.add(orbitsGroup);
-
-    // 绘制 5 颗星球的圆形轨道底线，极度淡雅
-    planets.forEach((p) => {
-      const orbitRing = createPlanetRing(p.data.orbitRadius, p.data.color, p.data.layer === 'tech' ? 0.04 : 0.02);
-      // 倾斜轨道
-      orbitRing.rotation.z = p.data.orbitIncline;
-      orbitsGroup.add(orbitRing);
-    });
-
-    // 添加轻微的参考网格网格
-    const orbitGrid = new THREE.GridHelper(46, 26, 0x17181c, 0x17181c);
-    orbitGrid.position.y = -4.5;
-    (orbitGrid.material as THREE.Material).opacity = 0.02;
-    (orbitGrid.material as THREE.Material).transparent = true;
-    orbitsGroup.add(orbitGrid);
-
-    // 6. 星系连线：技术三角 (Math, AI, Quant) 实体细线全连，人文卫星 (Self, Journal) 虚线连到技术
     const linesGroup = new THREE.Group();
     scene.add(linesGroup);
-
-    interface Connection {
-      fromId: string;
-      toId: string;
-      kind: 'primary' | 'secondary';
-    }
-
-    const connections: Connection[] = [
-      // 技术三角（全连线）
-      { fromId: 'math', toId: 'ai', kind: 'primary' },
-      { fromId: 'ai', toId: 'quant', kind: 'primary' },
-      { fromId: 'math', toId: 'quant', kind: 'primary' },
-      // 人文两颗
-      { fromId: 'self', toId: 'journal', kind: 'secondary' },
-      { fromId: 'self', toId: 'ai', kind: 'secondary' },
-      { fromId: 'journal', toId: 'math', kind: 'secondary' }
+    const connectionPairs = [
+      ['math', 'ai'],
+      ['ai', 'quant'],
+      ['math', 'quant'],
+      ['self', 'journal'],
+      ['self', 'ai'],
+      ['journal', 'math'],
+      ['journal', 'quant'],
     ];
-
-    const connectionLines: { line: THREE.Line; conn: Connection }[] = [];
-
-    connections.forEach((conn) => {
+    const connectionLines = connectionPairs.map(([fromId, toId]) => {
       const geom = new THREE.BufferGeometry();
-      // 初始化空位置
-      const positions = new Float32Array([0, 0, 0, 0, 0, 0]);
-      geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-      let mat: THREE.LineBasicMaterial | THREE.LineDashedMaterial;
-      if (conn.kind === 'primary') {
-        mat = new THREE.LineBasicMaterial({
-          color: 0x17181c,
-          transparent: true,
-          opacity: 0.10,
-          linewidth: 1
-        });
-      } else {
-        mat = new THREE.LineDashedMaterial({
-          color: 0x17181c,
-          transparent: true,
-          opacity: 0.05,
-          dashSize: 0.4,
-          gapSize: 0.3,
-          linewidth: 1
-        });
-      }
-
-      const line = new THREE.Line(geom, mat);
-      // 如果是虚线，需要计算 lineDistances 属性以渲染
-      if (conn.kind === 'secondary') {
-        line.computeLineDistances();
-      }
-
+      geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+      const line = new THREE.Line(
+        geom,
+        new THREE.LineBasicMaterial({ color: 0x17181c, transparent: true, opacity: 0.07 }),
+      );
       linesGroup.add(line);
-      connectionLines.push({ line, conn });
+      return { line, fromId, toId };
     });
 
-    // 7. 更新星球空间坐标
-    function updatePlanetPositions(time: number) {
-      planets.forEach((p) => {
-        // 如果系统正在 ZOOMING 变焦，保留轨道角度
-        if (systemState === 'ORBIT') {
-          // 悬停时，受外力吸引，对应星球公转速度大幅变慢以聚焦，自转极速
-          if (hoveredNode && hoveredNode.id === p.data.id) {
-            p.currentAngle += p.data.orbitSpeed * 0.15;
-          } else {
-            p.currentAngle += p.data.orbitSpeed;
-          }
-        }
-
-        // 计算 3D 空间倾斜轨道位置
-        const rawX = Math.cos(p.currentAngle) * p.data.orbitRadius;
-        const rawZ = Math.sin(p.currentAngle) * p.data.orbitRadius;
-
-        // 应用轨道倾角
-        const x = rawX * Math.cos(p.data.orbitIncline);
-        const y = rawX * Math.sin(p.data.orbitIncline);
-        const z = rawZ;
-
-        p.actualPos.set(x, y, z);
-
-        // 如果不是变焦穿梭状态，更新 Group 位置
-        if (systemState === 'ORBIT') {
-          p.group.position.copy(p.actualPos);
-        }
-      });
-    }
-
-    // 更新连线几何形状
     function updateConnectionLines() {
-      connectionLines.forEach(({ line, conn }) => {
-        const pFrom = planets.find((p) => p.data.id === conn.fromId);
-        const pTo = planets.find((p) => p.data.id === conn.toId);
+      connectionLines.forEach(({ line, fromId, toId }) => {
+        const from = worlds.find((world) => world.data.id === fromId);
+        const to = worlds.find((world) => world.data.id === toId);
+        if (!from || !to) return;
 
-        if (pFrom && pTo) {
-          const positions = line.geometry.attributes.position.array as Float32Array;
+        const positions = line.geometry.attributes.position.array as Float32Array;
+        positions[0] = from.group.position.x;
+        positions[1] = from.group.position.y;
+        positions[2] = from.group.position.z;
+        positions[3] = to.group.position.x;
+        positions[4] = to.group.position.y;
+        positions[5] = to.group.position.z;
+        line.geometry.attributes.position.needsUpdate = true;
 
-          positions[0] = pFrom.group.position.x;
-          positions[1] = pFrom.group.position.y;
-          positions[2] = pFrom.group.position.z;
-
-          positions[3] = pTo.group.position.x;
-          positions[4] = pTo.group.position.y;
-          positions[5] = pTo.group.position.z;
-
-          line.geometry.attributes.position.needsUpdate = true;
-
-          if (conn.kind === 'secondary') {
-            line.computeLineDistances();
-          }
-
-          // 连线的高亮控制：若两端节点有 Hover，变亮并着色
-          const isFromHovered = hoveredNode && hoveredNode.id === conn.fromId;
-          const isToHovered = hoveredNode && hoveredNode.id === conn.toId;
-          const involved = isFromHovered || isToHovered;
-
-          const mat = line.material as THREE.LineBasicMaterial;
-          if (involved) {
-            const hNode = planets.find((p) => p.data.id === hoveredNode!.id)!;
-            mat.color.setHex(hNode.data.color);
-            mat.opacity = conn.kind === 'primary' ? 0.48 : 0.32;
-          } else {
-            mat.color.setHex(0x17181c);
-            mat.opacity = conn.kind === 'primary' ? 0.08 : 0.04;
-          }
+        const involved = hoveredNode && (hoveredNode.id === fromId || hoveredNode.id === toId);
+        const focused = focusedNode && (focusedNode.id === fromId || focusedNode.id === toId);
+        const mat = line.material as THREE.LineBasicMaterial;
+        if (involved || focused) {
+          const source = focusedNode || hoveredNode!;
+          mat.color.setHex(source.color);
+          mat.opacity += (0.34 - mat.opacity) * 0.12;
+        } else {
+          mat.color.setHex(0x17181c);
+          mat.opacity += (0.07 - mat.opacity) * 0.12;
         }
       });
     }
 
-    // 8. 窗口重绘自适应
-    function resize() {
-      const rect = container.getBoundingClientRect();
-      width = rect.width;
-      height = rect.height;
-
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-
-      renderer.setSize(width, height);
-    }
-
-    // 9. 更新 HUD 标签
     function updateLabel() {
-      if (!hoveredNode || systemState !== 'ORBIT') {
+      if (!hoveredNode || systemState !== 'OVERVIEW') {
         labelEl.classList.remove('is-visible');
         return;
       }
 
-      // 寻找到对应的 3D 投影坐标以显示 2D 悬浮标签
-      const pObj = planets.find((p) => p.data.id === hoveredNode!.id);
-      if (!pObj) return;
+      const world = worlds.find((item) => item.data.id === hoveredNode!.id);
+      if (!world) return;
 
       const tempV = new THREE.Vector3();
-      pObj.group.getWorldPosition(tempV);
+      world.group.getWorldPosition(tempV);
       tempV.project(camera);
 
-      const lx = (tempV.x *  .5 + .5) * width;
-      const ly = (tempV.y * -.5 + .5) * height;
+      const lx = (tempV.x * 0.5 + 0.5) * width;
+      const ly = (tempV.y * -0.5 + 0.5) * height;
 
       labelEl.style.setProperty('--lx', `${lx}px`);
-      labelEl.style.setProperty('--ly', `${ly - (pObj.data.planetSize * 15) - 32}px`);
-      labelEl.style.setProperty('--lc', rgbStyle(pObj.data.colorTuple, 0.95));
+      labelEl.style.setProperty('--ly', `${ly - world.data.planetSize * 15 - 32}px`);
+      labelEl.style.setProperty('--lc', rgbStyle(world.data.colorTuple, 0.95));
       labelEl.innerHTML = `
-        <span class="constellation-label__main">${pObj.data.glyph} ─ ${pObj.data.label}</span>
-        <span class="constellation-label__sub">${pObj.data.sub}</span>
+        <span class="world-manifold-label__main">${world.data.glyph} ─ ${world.data.label}</span>
+        <span class="world-manifold-label__sub">${world.data.sub}</span>
       `;
       labelEl.classList.add('is-visible');
     }
 
-    // 10. 交互主渲染循环
-    function render(time: number) {
-      if (paused) return;
-
-      const frameId = requestAnimationFrame(render);
-      (window as any).__CONSTELLATION_FRAME_ID__ = frameId;
-
-      // 更新星球物理轨道位置
-      updatePlanetPositions(time);
-
-      if (systemState === 'ORBIT') {
-        // 自转公转动画逻辑
-        planets.forEach((p) => {
-          const isHovered = hoveredNode && hoveredNode.id === p.data.id;
-
-          // Hover 加速旋转，加强几何结构变化
-          const rotSpeed = isHovered ? 0.025 : 0.005;
-          p.coreMesh.rotation.y += rotSpeed;
-          p.coreMesh.rotation.x += rotSpeed * 0.4;
-
-          p.outerStructures.forEach((struct) => {
-            struct.rotation.y -= rotSpeed * 0.7;
-            struct.rotation.z += rotSpeed * 0.3;
-          });
-
-          // 材质渐变过渡 (透明度加强)
-          const targetOpacity = isHovered ? 0.48 : 0.16;
-          const mat = (p.coreMesh as THREE.Mesh).material as THREE.MeshBasicMaterial;
-          mat.opacity += (targetOpacity - mat.opacity) * 0.12;
-
-          p.outerStructures.forEach((struct) => {
-            if ((struct as THREE.Mesh).material) {
-              const smat = (struct as THREE.Mesh).material as THREE.MeshBasicMaterial;
-              const sTargetOpacity = isHovered ? 0.55 : 0.16;
-              smat.opacity += (sTargetOpacity - smat.opacity) * 0.12;
-            }
-          });
-        });
-
-        // 摄像机弱游荡感
-        if (pointerActive) {
-          camera.position.x += (cameraDefaultPos.x + mouse.x * 2.5 - camera.position.x) * 0.04;
-          camera.position.y += (cameraDefaultPos.y + mouse.y * 2.5 - camera.position.y) * 0.04;
-        } else {
-          camera.position.x += (cameraDefaultPos.x + Math.sin(time * 0.0004) * 0.8 - camera.position.x) * 0.02;
-          camera.position.z += (cameraDefaultPos.z + Math.cos(time * 0.0003) * 0.6 - camera.position.z) * 0.02;
-        }
-        camera.lookAt(0, 0, 0);
-
-      } else if (systemState === 'ZOOMING_IN') {
-        // 3D ZOOMING_IN 变焦穿梭效果，摄像机极速逼近穿透该星球
-        transitionProgress += 0.038;
-        const ease = Math.pow(transitionProgress, 3); // 爆发性推入
-
-        const targetPlanet = planets.find((p) => p.data.id === selectedNode!.id);
-        if (targetPlanet) {
-          const targetPos = targetPlanet.group.position.clone();
-
-          // 计算穿透路径：摄像机当前位置与星球位置的连线，再稍微往前推一段距离，产生“穿过”星球的沉浸感
-          const direction = new THREE.Vector3().subVectors(targetPos, camera.position).normalize();
-          const destination = targetPos.clone().add(direction.multiplyScalar(4.5));
-
-          camera.position.lerp(destination, 0.08);
-          camera.lookAt(targetPos);
-
-          // FOV 变焦畸变 (模拟极限推进)
-          camera.fov = 45 + ease * 65;
-          camera.updateProjectionMatrix();
-
-          // 其他所有星球和连线淡出并移开
-          planets.forEach((p) => {
-            const mat = (p.coreMesh as THREE.Mesh).material as THREE.MeshBasicMaterial;
-            if (p.data.id !== selectedNode!.id) {
-              p.group.position.y -= ease * 0.5;
-              mat.opacity = Math.max(0, mat.opacity * (1 - ease));
-              p.outerStructures.forEach((s) => {
-                if ((s as THREE.Mesh).material) {
-                  const smat = (s as THREE.Mesh).material as THREE.MeshBasicMaterial;
-                  smat.opacity = Math.max(0, smat.opacity * (1 - ease));
-                }
-              });
-            } else {
-              // 目标星球在临界时也淡出，实现完美穿梭
-              mat.opacity = Math.max(0, mat.opacity * (1 - ease * 1.5));
-              p.outerStructures.forEach((s) => {
-                if ((s as THREE.Mesh).material) {
-                  const smat = (s as THREE.Mesh).material as THREE.MeshBasicMaterial;
-                  smat.opacity = Math.max(0, smat.opacity * (1 - ease * 1.5));
-                }
-              });
-            }
-          });
-
-          // 连线与轨道淡出
-          connectionLines.forEach(({ line }) => {
-            const mat = line.material as THREE.LineBasicMaterial;
-            mat.opacity = Math.max(0, mat.opacity * (1 - ease));
-          });
-          orbitsGroup.children.forEach((orbit) => {
-            const mat = (orbit as THREE.Mesh).material as THREE.MeshBasicMaterial;
-            if (mat) {
-              mat.opacity = Math.max(0, mat.opacity * (1 - ease));
-            }
-          });
-
-          if (transitionProgress >= 1.0) {
-            systemState = 'TRANSITION_COMPLETE';
-            // 执行 SPA 路由跳转
-            import('astro:transitions/client').then(({ navigate }) => {
-              navigate(selectedNode!.href);
-            });
-          }
-        }
-      }
-
-      // 更新星系连线
-      updateConnectionLines();
-
-      // 更新 DOM Label
-      updateLabel();
-
-      renderer.render(scene, camera);
+    function updateOrbitCameraTarget(center: THREE.Vector3) {
+      const sinPhi = Math.sin(orbit.phi);
+      targetCameraPos.set(
+        center.x + orbit.radius * sinPhi * Math.sin(orbit.theta),
+        center.y + orbit.radius * Math.cos(orbit.phi),
+        center.z + orbit.radius * sinPhi * Math.cos(orbit.theta),
+      );
+      targetLookAt.copy(center);
     }
 
-    // 11. 指针移动检测
-    function onPointerMove(event: PointerEvent) {
+    function syncPanel(node: NodeData) {
+      worldIndexEl.textContent = node.title;
+      worldTitleEl.textContent = node.label;
+      worldGlyphEl.textContent = node.glyph;
+      worldBodyEl.textContent = node.content;
+      worldSpaceEl.textContent = node.sub;
+      worldStateEl.textContent = `σ ${node.paramChange.sigma.toFixed(1)} · ρ ${node.paramChange.rho.toFixed(1)} · β ${node.paramChange.beta.toFixed(2)}`;
+    }
+
+    function focusNode(node: NodeData) {
+      focusedNode = node;
+      hoveredNode = null;
+      systemState = 'FOCUSED';
+      labelEl.classList.remove('is-visible');
+      panelEl.classList.add('is-active');
+      resetBtn.classList.add('is-visible');
+      syncPanel(node);
+      updateSysInfo(node.id, 'focused', node.label);
+
+      lorenzTargets.sigma = node.paramChange.sigma;
+      lorenzTargets.rho = node.paramChange.rho;
+      lorenzTargets.beta = node.paramChange.beta;
+      lorenzTargets.speedScale = 2.1;
+
+      orbitTarget.theta = Math.atan2(camera.position.x - node.position.x, camera.position.z - node.position.z);
+      orbitTarget.phi = window.innerWidth <= 700 ? 1.25 : 1.38;
+      orbitTarget.radius = window.innerWidth <= 700 ? 9.2 : 7.2;
+
+      equationEl.innerHTML = `
+        Warped State (${node.id.toUpperCase()}):<br />
+        σ = ${node.paramChange.sigma.toFixed(1)}<br />
+        ρ = ${node.paramChange.rho.toFixed(1)}<br />
+        β = ${node.paramChange.beta.toFixed(2)}
+      `;
+    }
+
+    function resetView() {
+      focusedNode = null;
+      systemState = 'OVERVIEW';
+      panelEl.classList.remove('is-active');
+      resetBtn.classList.remove('is-visible');
+      updateSysInfo('five nodes', 'waiting', 'manifold');
+
+      lorenzTargets.sigma = 10;
+      lorenzTargets.rho = 28;
+      lorenzTargets.beta = 8 / 3;
+      lorenzTargets.speedScale = 1;
+      orbitTarget.theta = defaultOrbit.theta;
+      orbitTarget.phi = defaultOrbit.phi;
+      orbitTarget.radius = defaultOrbit.radius;
+      targetLookAt.set(0, 0, 0);
+      equationEl.innerHTML = `
+        Attractor Equations (Overview):<br />
+        dx/dt = σ(y - x)<br />
+        dy/dt = x(ρ - z) - y<br />
+        dz/dt = xy - βz
+      `;
+    }
+
+    function enterWorld() {
+      if (!focusedNode || systemState === 'ENTERING') return;
+      systemState = 'ENTERING';
+      transitionProgress = 0;
+      hasNavigated = false;
+      enteringStartCamera.copy(camera.position);
+      enteringStartLookAt.copy(cameraTarget);
+      updateSysInfo(focusedNode.id, 'entering', focusedNode.label);
+      panelEl.classList.remove('is-active');
+      resetBtn.classList.remove('is-visible');
+    }
+
+    function resize() {
       const rect = container.getBoundingClientRect();
-      const clientX = event.clientX - rect.left;
-      const clientY = event.clientY - rect.top;
+      width = rect.width;
+      height = rect.height;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    }
 
-      mouse.x = (clientX / width) * 2 - 1;
-      mouse.y = -(clientY / height) * 2 + 1;
-      pointerActive = true;
+    function updateHover(clientX: number, clientY: number) {
+      const rect = container.getBoundingClientRect();
+      mouse.x = ((clientX - rect.left) / width) * 2 - 1;
+      mouse.y = -((clientY - rect.top) / height) * 2 + 1;
 
-      if (systemState !== 'ORBIT') return;
-
-      // 通过射线寻找 Hover 星球
       raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(planetsGroup.children, true);
-
-      let found: NodeData | null = null;
-      for (let i = 0; i < intersects.length; i++) {
-        const obj = intersects[i].object;
-        if (obj.userData && obj.userData.isHitZone) {
-          const id = obj.userData.nodeId;
-          found = nodesData.find((n) => n.id === id) || null;
-          break;
-        }
-      }
+      const intersects = raycaster.intersectObjects(raycastTargets, true);
+      const hit = intersects.find((item) => item.object.userData && item.object.userData.isHitZone);
+      const found = hit ? nodesData.find((node) => node.id === hit.object.userData.nodeId) || null : null;
 
       if (found !== hoveredNode) {
         hoveredNode = found;
-        container.style.cursor = found ? 'pointer' : '';
+        container.style.cursor = found ? 'pointer' : 'grab';
         if (found) {
           updateSysInfo(found.id, 'ready', found.label);
         } else {
-          updateSysInfo('five nodes', 'waiting', 'constellation');
+          updateSysInfo('five nodes', 'waiting', 'manifold');
         }
       }
     }
 
+    function onPointerMove(event: PointerEvent) {
+      const rect = container.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / height) * 2 + 1;
+
+      if (isDraggingView && systemState !== 'ENTERING') {
+        const dx = event.clientX - pointerLastX;
+        const dy = event.clientY - pointerLastY;
+        pointerLastX = event.clientX;
+        pointerLastY = event.clientY;
+        dragDistance += Math.abs(dx) + Math.abs(dy);
+        orbitTarget.theta -= dx * 0.006;
+        orbitTarget.phi = Math.max(0.32, Math.min(Math.PI - 0.32, orbitTarget.phi + dy * 0.005));
+        container.style.cursor = 'grabbing';
+        hoveredNode = null;
+        labelEl.classList.remove('is-visible');
+        return;
+      }
+
+      if (systemState !== 'OVERVIEW') return;
+      updateHover(event.clientX, event.clientY);
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      if ((event.target as Element).closest('button') || (event.target as Element).closest('.world-panel')) return;
+      pointerStartX = event.clientX;
+      pointerStartY = event.clientY;
+      pointerLastX = event.clientX;
+      pointerLastY = event.clientY;
+      dragDistance = 0;
+      isDraggingView = systemState !== 'ENTERING';
+      container.setPointerCapture(event.pointerId);
+      container.style.cursor = 'grabbing';
+    }
+
+    function onPointerUp(event: PointerEvent) {
+      if (isDraggingView) {
+        isDraggingView = false;
+        if (container.hasPointerCapture(event.pointerId)) container.releasePointerCapture(event.pointerId);
+        container.style.cursor = hoveredNode ? 'pointer' : 'grab';
+      }
+
+      if (systemState !== 'OVERVIEW' || !hoveredNode) return;
+      if ((event.target as Element).closest('button') || (event.target as Element).closest('.world-panel')) return;
+      const deltaX = Math.abs(event.clientX - pointerStartX);
+      const deltaY = Math.abs(event.clientY - pointerStartY);
+      if (deltaX > 8 || deltaY > 8 || dragDistance > 14) {
+        updateHover(event.clientX, event.clientY);
+        return;
+      }
+      focusNode(hoveredNode);
+    }
+
+    function onWheel(event: WheelEvent) {
+      if (systemState === 'ENTERING') return;
+      event.preventDefault();
+      const minRadius = focusedNode ? 5.2 : 18;
+      const maxRadius = focusedNode ? 15 : 46;
+      orbitTarget.radius = Math.max(minRadius, Math.min(maxRadius, orbitTarget.radius + event.deltaY * 0.018));
+    }
+
     function onPointerLeave() {
-      pointerActive = false;
+      if (systemState !== 'OVERVIEW') return;
       hoveredNode = null;
-      container.style.cursor = '';
-      updateSysInfo('five nodes', 'waiting', 'constellation');
+      isDraggingView = false;
+      container.style.cursor = 'grab';
+      updateSysInfo('five nodes', 'waiting', 'manifold');
     }
 
-    // 12. 点击星球触发变焦穿梭
-    function onClick() {
-      if (systemState !== 'ORBIT' || !hoveredNode) return;
-
-      selectedNode = hoveredNode;
-      systemState = 'ZOOMING_IN';
-      transitionProgress = 0;
-
-      updateSysInfo(selectedNode.id, 'tunneling', selectedNode.label);
-      labelEl.classList.remove('is-visible');
-    }
-
-    // 13. 生命周期管理
     function onVisibility() {
       paused = document.hidden;
+      if (!paused) {
+        const frameId = requestAnimationFrame(render);
+        (window as any).__CONSTELLATION_FRAME_ID__ = frameId;
+      }
     }
 
     let resizeFrame = 0;
@@ -781,28 +701,139 @@
       resizeFrame = requestAnimationFrame(resize);
     }
 
-    resize();
+    function render(time: number) {
+      if (paused) return;
+
+      const frameId = requestAnimationFrame(render);
+      (window as any).__CONSTELLATION_FRAME_ID__ = frameId;
+
+      const elapsed = time * 0.001;
+      lorenzParams.sigma += (lorenzTargets.sigma - lorenzParams.sigma) * 0.035;
+      lorenzParams.rho += (lorenzTargets.rho - lorenzParams.rho) * 0.035;
+      lorenzParams.beta += (lorenzTargets.beta - lorenzParams.beta) * 0.035;
+      lorenzParams.speedScale += (lorenzTargets.speedScale - lorenzParams.speedScale) * 0.035;
+      rebuildLorenz();
+      lorenzLine.rotation.y = elapsed * 0.08 * lorenzParams.speedScale;
+
+      gridGroup.rotation.y = elapsed * 0.02;
+      gridGroup.rotation.x = Math.sin(elapsed * 0.12) * 0.04;
+      const targetGridScale = focusedNode ? 0.82 : 1;
+      gridGroup.scale.lerp(new THREE.Vector3(targetGridScale, targetGridScale, targetGridScale), 0.04);
+
+      worlds.forEach((world, index) => {
+        const isHovered = hoveredNode && hoveredNode.id === world.data.id;
+        const isFocused = focusedNode && focusedNode.id === world.data.id;
+        const floatY = Math.sin(elapsed * 0.7 + index * 1.9) * 0.16;
+        const targetPos = world.basePosition.clone();
+        targetPos.y += floatY;
+        world.group.position.lerp(targetPos, 0.035);
+
+        const rotSpeed = systemState === 'ENTERING' && isFocused ? 0.035 : isFocused ? 0.012 : isHovered ? 0.02 : 0.0045;
+        world.coreMesh.rotation.y += rotSpeed;
+        world.coreMesh.rotation.x += rotSpeed * 0.45;
+        world.outerStructures.forEach((struct) => {
+          struct.rotation.y -= rotSpeed * 0.75;
+          struct.rotation.z += rotSpeed * 0.32;
+        });
+
+        if (systemState !== 'ENTERING') {
+          const targetScale = isFocused ? 1.22 : isHovered ? 1.14 : 1;
+          world.group.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.12);
+        }
+
+        const targetOpacity = systemState === 'ENTERING' ? (isFocused ? 0.56 : 0.06) : isFocused ? 0.56 : isHovered ? 0.48 : 0.18;
+        const mat = world.coreMesh.material as THREE.MeshBasicMaterial | THREE.PointsMaterial;
+        mat.opacity += (targetOpacity - mat.opacity) * 0.12;
+        world.outerStructures.forEach((struct) => {
+          const material = (struct as THREE.Mesh | THREE.Points).material as THREE.MeshBasicMaterial | THREE.PointsMaterial | undefined;
+          if (material) material.opacity += ((systemState === 'ENTERING' ? (isFocused ? 0.5 : 0.04) : isFocused || isHovered ? 0.52 : 0.18) - material.opacity) * 0.12;
+        });
+      });
+
+      orbit.theta += (orbitTarget.theta - orbit.theta) * 0.09;
+      orbit.phi += (orbitTarget.phi - orbit.phi) * 0.09;
+      orbit.radius += (orbitTarget.radius - orbit.radius) * 0.09;
+
+      if (systemState === 'ENTERING' && focusedNode) {
+        transitionProgress = Math.min(1, transitionProgress + 0.018);
+        const world = worlds.find((item) => item.data.id === focusedNode!.id);
+        if (world) {
+          const targetPos = world.group.position.clone();
+          const direction = new THREE.Vector3().subVectors(targetPos, enteringStartCamera).normalize();
+          const passThrough = targetPos.clone().add(direction.multiplyScalar(7.5));
+          const ease = 1 - Math.pow(1 - transitionProgress, 4);
+          const pulse = Math.sin(Math.min(1, transitionProgress * 1.4) * Math.PI);
+
+          targetCameraPos.copy(enteringStartCamera).lerp(passThrough, ease);
+          targetLookAt.copy(enteringStartLookAt).lerp(targetPos, Math.min(1, ease * 1.35));
+          camera.fov = 50 + pulse * 28 + transitionProgress * 22;
+          camera.updateProjectionMatrix();
+          lorenzLine.scale.setScalar(1 + pulse * 0.22);
+          (lorenzMaterial as THREE.LineBasicMaterial).opacity = Math.max(0, 0.44 * (1 - transitionProgress * 0.72));
+
+          worlds.forEach((item) => {
+            const targetScale = item.data.id === focusedNode!.id ? 1 + pulse * 1.45 : Math.max(0.25, 1 - ease * 0.88);
+            item.group.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.18);
+            const mat = item.coreMesh.material as THREE.MeshBasicMaterial | THREE.PointsMaterial;
+            const opacity = item.data.id === focusedNode!.id ? Math.max(0, 0.58 * (1 - transitionProgress * 0.88)) : Math.max(0, mat.opacity * (1 - transitionProgress * 0.08));
+            mat.opacity += (opacity - mat.opacity) * 0.22;
+          });
+        }
+
+        if (transitionProgress >= 0.86 && !hasNavigated) {
+          hasNavigated = true;
+          import('astro:transitions/client').then(({ navigate }) => {
+            navigate(focusedNode!.href);
+          });
+        }
+      } else {
+        camera.fov += (50 - camera.fov) * 0.05;
+        camera.updateProjectionMatrix();
+        lorenzLine.scale.lerp(new THREE.Vector3(1, 1, 1), 0.06);
+        (lorenzMaterial as THREE.LineBasicMaterial).opacity += (0.44 - (lorenzMaterial as THREE.LineBasicMaterial).opacity) * 0.06;
+        updateOrbitCameraTarget(focusedNode ? focusedNode.position : new THREE.Vector3(0, 0, 0));
+      }
+
+      camera.position.lerp(targetCameraPos, systemState === 'ENTERING' ? 0.2 : 0.075);
+      cameraTarget.lerp(targetLookAt, systemState === 'ENTERING' ? 0.18 : 0.08);
+      camera.lookAt(cameraTarget);
+
+      updateConnectionLines();
+      updateLabel();
+      renderer.render(scene, camera);
+    }
+
+    resetBtn.addEventListener('click', resetView);
+    enterBtn.addEventListener('click', enterWorld);
     window.addEventListener('resize', onResize);
     window.addEventListener('pointermove', onPointerMove);
+    container.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointerleave', onPointerLeave);
-    window.addEventListener('click', onClick);
+    container.addEventListener('wheel', onWheel, { passive: false });
     document.addEventListener('visibilitychange', onVisibility);
 
-    // 启动渲染
-    render(performance.now());
+    container.style.cursor = 'grab';
+    resize();
+    resetView();
+    const initialFrame = requestAnimationFrame(render);
+    (window as any).__CONSTELLATION_FRAME_ID__ = initialFrame;
 
-    // 卸载监听，完美适配 Astro ClientRouter SPA 重新加载
     document.addEventListener('astro:before-swap', () => {
       const frameId = (window as any).__CONSTELLATION_FRAME_ID__;
-      if (frameId) {
-        cancelAnimationFrame(frameId);
-      }
+      if (frameId) cancelAnimationFrame(frameId);
       cancelAnimationFrame(resizeFrame);
+      resetBtn.removeEventListener('click', resetView);
+      enterBtn.removeEventListener('click', enterWorld);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('pointermove', onPointerMove);
+      container.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointerleave', onPointerLeave);
-      window.removeEventListener('click', onClick);
+      container.removeEventListener('wheel', onWheel);
       document.removeEventListener('visibilitychange', onVisibility);
+      renderer.dispose();
+      lorenzGeometry.dispose();
     }, { once: true });
   }
 
@@ -811,79 +842,282 @@
     roots.forEach(makeConstellation);
   }
 
-  // 支持 Astro SPA 软跳转
   document.addEventListener('astro:page-load', initConstellation);
 </script>
 
 <style>
-  .constellation {
+  .world-manifold {
     position: fixed;
     inset: 0;
     z-index: 0;
     overflow: hidden;
-    background:
-      radial-gradient(circle at 50% 50%, rgba(29, 78, 216, 0.02), transparent 32rem),
-      linear-gradient(180deg, rgba(251, 250, 247, 0.7), rgba(245, 242, 235, 0.85));
+    background: #fcfcfd;
+    color: #1a1a1e;
+    font-family: var(--font-mono);
     opacity: 0;
-    animation: constellation-fade 1.2s ease 200ms both;
+    animation: world-manifold-fade 1.2s ease 120ms both;
   }
 
-  .constellation__canvas-container {
+  .world-manifold__canvas {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
   }
 
-  .constellation__vignette {
+  .world-manifold::after {
+    content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
     background:
-      radial-gradient(circle at 50% 50%, transparent 55%, rgba(251, 250, 247, 0.32) 100%);
+      radial-gradient(circle at 50% 46%, transparent 46%, rgba(252, 252, 253, 0.44) 100%),
+      linear-gradient(90deg, rgba(252, 252, 253, 0.62), transparent 24%, transparent 76%, rgba(252, 252, 253, 0.72));
   }
 
-  .constellation-label {
+  .world-manifold__header {
+    position: fixed;
+    top: clamp(1.7rem, 5vh, 3rem);
+    left: clamp(1.5rem, 4vw, 3rem);
+    z-index: 7;
+    pointer-events: none;
+  }
+
+  .world-manifold__eyebrow {
+    margin: 0 0 0.52rem;
+    font-size: 0.58rem;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: rgba(23, 24, 28, 0.48);
+  }
+
+  .world-manifold__header h1 {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: clamp(0.88rem, 1.2vw, 1rem);
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #000;
+  }
+
+  .world-manifold__equation {
+    margin-top: 0.85rem;
+    font-size: 0.68rem;
+    line-height: 1.65;
+    letter-spacing: 0.04em;
+    color: rgba(23, 24, 28, 0.48);
+  }
+
+  .world-manifold-label {
     position: fixed;
     left: 0;
     top: 0;
     --lx: 50%;
     --ly: 50%;
     --lc: rgba(23, 24, 28, 0.8);
+    z-index: 8;
     transform: translate(var(--lx), var(--ly)) translate(-50%, -100%);
     pointer-events: none;
     opacity: 0;
-    transition: opacity 220ms ease, transform 240ms cubic-bezier(0.25, 0.8, 0.25, 1);
     text-align: center;
     color: var(--lc);
-    z-index: 8;
+    transition: opacity 220ms ease, transform 240ms cubic-bezier(0.25, 0.8, 0.25, 1);
   }
 
-  .constellation-label.is-visible {
+  .world-manifold-label.is-visible {
     opacity: 1;
   }
 
-  .constellation-label__main {
+  .world-manifold-label__main {
     display: block;
     font-family: var(--font-italic);
+    font-size: 1.36rem;
     font-style: italic;
-    font-size: 1.35rem;
     line-height: 1.1;
-    letter-spacing: 0.02em;
   }
 
-  .constellation-label__sub {
+  .world-manifold-label__sub {
     display: block;
-    margin-top: 6px;
-    font-family: var(--font-mono);
-    font-size: 0.62rem;
+    margin-top: 0.38rem;
+    font-size: 0.58rem;
     letter-spacing: 0.32em;
     text-transform: uppercase;
-    color: rgba(23, 24, 28, 0.45);
+    color: rgba(23, 24, 28, 0.46);
   }
 
-  @keyframes constellation-fade {
-    from { opacity: 0; transform: scale(1.02); }
+  .world-manifold__reset,
+  .world-panel__enter {
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.38);
+    color: #000;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    transition: background 260ms ease, color 260ms ease, border-color 260ms ease, opacity 260ms ease, transform 260ms ease;
+  }
+
+  .world-manifold__reset:hover,
+  .world-panel__enter:hover {
+    border-color: #000;
+    background: #000;
+    color: #fff;
+  }
+
+  .world-manifold__reset {
+    position: fixed;
+    bottom: clamp(1.5rem, 4vh, 2.5rem);
+    left: clamp(1.5rem, 4vw, 3rem);
+    z-index: 9;
+    padding: 0.72rem 1.08rem;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+  }
+
+  .world-manifold__reset.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+
+  .world-panel {
+    position: fixed;
+    top: 0;
+    right: -31rem;
+    z-index: 10;
+    box-sizing: border-box;
+    width: min(26rem, 88vw);
+    height: 100%;
+    padding: clamp(4.5rem, 11vh, 6rem) clamp(1.6rem, 4vw, 2.6rem);
+    border-left: 1px solid rgba(0, 0, 0, 0.06);
+    background: rgba(255, 255, 255, 0.84);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    box-shadow: -24px 0 70px rgba(15, 23, 42, 0.05);
+    transition: right 760ms cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: auto;
+  }
+
+  .world-panel.is-active {
+    right: 0;
+  }
+
+  .world-panel__index {
+    margin: 0 0 1.2rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    padding-bottom: 0.85rem;
+    color: #000;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .world-panel h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(2.2rem, 5vw, 3.9rem);
+    font-weight: 400;
+    line-height: 0.95;
+    color: #000;
+  }
+
+  .world-panel__glyph {
+    margin: 1.15rem 0 0;
+    font-family: var(--font-italic);
+    font-size: 3.5rem;
+    font-style: italic;
+    line-height: 1;
+    color: rgba(23, 24, 28, 0.18);
+  }
+
+  .world-panel__body {
+    margin: 1.2rem 0 0;
+    font-family: var(--font-body);
+    font-size: 1.02rem;
+    line-height: 1.82;
+    color: rgba(23, 24, 28, 0.68);
+  }
+
+  .world-panel__meta {
+    display: grid;
+    gap: 0.9rem;
+    margin: 2rem 0 0;
+    padding: 1.2rem 0;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  }
+
+  .world-panel__meta div {
+    display: grid;
+    gap: 0.28rem;
+  }
+
+  .world-panel__meta dt {
+    color: rgba(23, 24, 28, 0.38);
+    font-size: 0.56rem;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+  }
+
+  .world-panel__meta dd {
+    margin: 0;
+    color: rgba(23, 24, 28, 0.62);
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .world-panel__enter {
+    margin-top: 2rem;
+    padding: 0.86rem 1.2rem;
+  }
+
+  @keyframes world-manifold-fade {
+    from { opacity: 0; transform: scale(1.012); }
     to { opacity: 1; transform: scale(1); }
+  }
+
+  @media (max-width: 700px) {
+    .world-manifold__header {
+      top: 1.35rem;
+      left: 1.35rem;
+      right: 1.35rem;
+    }
+
+    .world-manifold__equation {
+      font-size: 0.58rem;
+      line-height: 1.5;
+    }
+
+    .world-panel {
+      top: auto;
+      right: 0;
+      bottom: -72%;
+      width: 100%;
+      height: 62%;
+      padding: 1.6rem 1.45rem;
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+      border-left: none;
+      transition: bottom 760ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .world-panel.is-active {
+      bottom: 0;
+    }
+
+    .world-manifold__reset {
+      top: 7.8rem;
+      bottom: auto;
+      left: 1.35rem;
+    }
+
+    .world-panel__body {
+      font-size: 0.95rem;
+      line-height: 1.68;
+    }
   }
 </style>
