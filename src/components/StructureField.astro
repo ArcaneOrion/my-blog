@@ -1,6 +1,6 @@
 ---
 interface Props {
-  mode?: 'triad' | 'math' | 'ai' | 'quant';
+  mode?: 'triad' | 'math' | 'ai' | 'quant' | 'self' | 'journal';
   compact?: boolean;
   projection?: boolean;
 }
@@ -25,10 +25,23 @@ const { mode = 'triad', compact = false, projection = false } = Astro.props;
   import type { SceneSpec, PointState, SceneCtx, ColorTuple } from '../scenes/types';
   import { rgba } from '../scenes/types';
 
-  const palette: { math: ColorTuple; ai: ColorTuple; quant: ColorTuple; ink: ColorTuple } = {
+  type ProjectionKind = 'icosahedron_ring' | 'octahedron_core' | 'dodecahedron_grid' | 'tetrahedron_cloud' | 'ring_particles';
+
+  interface ProjectionBridge {
+    mode?: string;
+    kind?: ProjectionKind;
+    glyph?: string;
+    label?: string;
+    color?: ColorTuple;
+    createdAt?: number;
+  }
+
+  const palette: { math: ColorTuple; ai: ColorTuple; quant: ColorTuple; self: ColorTuple; journal: ColorTuple; ink: ColorTuple } = {
     math: [29, 78, 216],
     ai: [190, 24, 93],
     quant: [15, 118, 110],
+    self: [124, 58, 237],
+    journal: [176, 137, 64],
     ink: [23, 24, 28],
   };
 
@@ -103,7 +116,30 @@ const { mode = 'triad', compact = false, projection = false } = Astro.props;
     let arrivalActive = false;
     let arrivalStart = 0;
     let arrivalColor: ColorTuple = palette.math;
-    const arrivalDuration = 760;
+    let arrivalKind: ProjectionKind = 'icosahedron_ring';
+    let arrivalGlyph = '';
+    let arrivalDuration = 760;
+    // Math 接住动画的三角碎片缓存
+    interface MathShard { angle: number; dist: number; size: number; spin: number; spinSpeed: number; phase: number; }
+    let mathShards: MathShard[] = [];
+
+    function seedMathShards(count: number) {
+      mathShards = [];
+      for (let i = 0; i < count; i += 1) {
+        const seed = Math.sin(i * 91.31 + 7.7) * 10000;
+        const r1 = seed - Math.floor(seed);
+        const r2 = Math.sin(i * 17.9 + 3.1) * 10000;
+        const r3 = r2 - Math.floor(r2);
+        mathShards.push({
+          angle: (i / count) * Math.PI * 2 + r1 * 0.6,
+          dist: 1.0 + r3 * 0.6,       // 起始距离（屏幕短边的倍数）
+          size: 10 + r1 * 16,         // 三角片基础边长（px）
+          spin: r1 * Math.PI * 2,
+          spinSpeed: 0.6 + r3 * 2.4,
+          phase: r1,
+        });
+      }
+    }
 
     function playProjectionArrival() {
       if (!projectionMode || typeof sessionStorage === 'undefined') return;
@@ -111,16 +147,433 @@ const { mode = 'triad', compact = false, projection = false } = Astro.props;
       if (!raw) return;
 
       try {
-        const bridge = JSON.parse(raw) as { mode?: string; color?: ColorTuple; createdAt?: number };
+        const bridge = JSON.parse(raw) as ProjectionBridge;
         const fresh = !bridge.createdAt || Date.now() - bridge.createdAt < 8000;
-        if (!fresh || bridge.mode !== mode) return;
+        if (!fresh || bridge.mode !== mode) {
+          sessionStorage.removeItem('arcane:projection-bridge');
+          return;
+        }
         sessionStorage.removeItem('arcane:projection-bridge');
 
         arrivalColor = bridge.color || palette[(mode as keyof typeof palette)] || palette.math;
+        arrivalKind = bridge.kind || 'icosahedron_ring';
+        arrivalGlyph = bridge.glyph || '';
+        // 各 kind 自己的接住动作时长（覆盖默认 760）
+        if (arrivalKind === 'icosahedron_ring') arrivalDuration = 1100;
+        else if (arrivalKind === 'octahedron_core') arrivalDuration = 1100;
+        else if (arrivalKind === 'dodecahedron_grid') arrivalDuration = 1100;
+        else if (arrivalKind === 'tetrahedron_cloud') arrivalDuration = 1200;
+        else if (arrivalKind === 'ring_particles') arrivalDuration = 1200;
+        else arrivalDuration = 760;
+        if (arrivalKind === 'icosahedron_ring') seedMathShards(48);
         arrivalActive = true;
         arrivalStart = performance.now();
       } catch {
         sessionStorage.removeItem('arcane:projection-bridge');
+      }
+    }
+
+    // ---- Math 接住：三角碎片从外向中央汇聚→凝结→边缘消散 ----
+    // 视觉剧本（与 observatory 端 mathEntryProgram 末段的"球面爆开飞过相机"语义衔接）：
+    //   0.00 ~ 0.55  碎片从屏幕外（dist≈1.0）加速向中央（dist≈0.06）收拢，
+    //                旋转减速，alpha 由 0 → 0.75。
+    //   0.45 ~ 0.75  中央出现一个收紧的二十面体投影（同 Math 的 icosahedron_ring 几何），
+    //                glyph 在投影中央渐入。
+    //   0.70 ~ 1.00  碎片再次向外漂出（dist 反向到 0.4），全体 alpha 渐隐。
+    function drawMathArrival(p: number, cx: number, cy: number) {
+      const short = Math.min(width, height);
+      // —— 阶段曲线
+      const inP = Math.min(1, p / 0.55);                                         // 收拢
+      const holdP = Math.max(0, Math.min(1, (p - 0.45) / 0.3));                  // 凝结
+      const outP = Math.max(0, (p - 0.7) / 0.3);                                 // 消散
+      const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+      const easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
+      const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+      // —— 软背景刷一层色（很浅，离开 observatory 时的颜色记忆）
+      const wash = ctx!.createRadialGradient(cx, cy, 0, cx, cy, short * 0.7);
+      wash.addColorStop(0, rgba(arrivalColor, (1 - p) * 0.18));
+      wash.addColorStop(0.6, rgba(arrivalColor, (1 - p) * 0.06));
+      wash.addColorStop(1, rgba(arrivalColor, 0));
+      ctx!.fillStyle = wash;
+      ctx!.fillRect(0, 0, width, height);
+
+      // —— 三角碎片
+      const baseDistIn = lerp(1.0, 0.06, easeInOut(inP));
+      const baseDistOut = lerp(0.06, 0.42, easeOut(outP));
+      const baseDist = outP > 0 ? baseDistOut : baseDistIn;
+      const shardAlpha = outP > 0
+        ? Math.max(0, 0.75 * (1 - outP))
+        : 0.75 * easeOut(inP);
+
+      ctx!.lineWidth = 1.1;
+      for (let i = 0; i < mathShards.length; i += 1) {
+        const s = mathShards[i];
+        const wobble = 1 + Math.sin(p * 6 + s.phase * 7) * 0.08;
+        const d = baseDist * s.dist * short * 0.5 * wobble;
+        const ax = cx + Math.cos(s.angle) * d;
+        const ay = cy + Math.sin(s.angle) * d;
+        const spin = s.spin + p * s.spinSpeed * Math.PI;
+        const sz = s.size * (0.6 + 0.6 * easeOut(inP));
+
+        ctx!.save();
+        ctx!.translate(ax, ay);
+        ctx!.rotate(spin);
+        ctx!.beginPath();
+        ctx!.moveTo(0, -sz * 0.58);
+        ctx!.lineTo(sz * 0.5, sz * 0.34);
+        ctx!.lineTo(-sz * 0.5, sz * 0.34);
+        ctx!.closePath();
+        ctx!.strokeStyle = rgba(arrivalColor, shardAlpha);
+        ctx!.stroke();
+        ctx!.restore();
+      }
+
+      // —— 中央二十面体投影（与 observatory icosahedron_ring 的 shadow 同构）
+      if (holdP > 0) {
+        const r = short * 0.18 * easeInOut(holdP);
+        ctx!.strokeStyle = rgba(arrivalColor, 0.75 * holdP * (1 - outP * 0.8));
+        ctx!.lineWidth = 1.2;
+        const sides = 10;
+        const rings = [0.32, 0.62, 0.92];
+        for (const ring of rings) {
+          ctx!.beginPath();
+          for (let i = 0; i <= sides; i += 1) {
+            const a = (i / sides) * Math.PI * 2 - Math.PI / 2;
+            const x = cx + Math.cos(a) * r * ring;
+            const y = cy + Math.sin(a) * r * ring;
+            if (i === 0) ctx!.moveTo(x, y);
+            else ctx!.lineTo(x, y);
+          }
+          ctx!.stroke();
+        }
+        // 辐条
+        for (let i = 0; i < sides; i += 1) {
+          const a = (i / sides) * Math.PI * 2 - Math.PI / 2;
+          ctx!.beginPath();
+          ctx!.moveTo(cx + Math.cos(a) * r * 0.32, cy + Math.sin(a) * r * 0.32);
+          ctx!.lineTo(cx + Math.cos(a) * r * 0.92, cy + Math.sin(a) * r * 0.92);
+          ctx!.stroke();
+        }
+      }
+
+      // —— glyph
+      if (arrivalGlyph && holdP > 0) {
+        ctx!.font = `${Math.round(46 + holdP * 24)}px Cormorant Garamond, serif`;
+        ctx!.textAlign = 'center';
+        ctx!.textBaseline = 'middle';
+        ctx!.fillStyle = rgba(arrivalColor, 0.7 * holdP * (1 - outP * 0.9));
+        ctx!.fillText(arrivalGlyph, cx, cy);
+      }
+    }
+
+    // ---- AI 接住：递归决策树从中心点向外展开 ----
+    // 视觉剧本（与 observatory 端 aiEntryProgram 末段"内核冲过镜头"衔接）：
+    //   0.00 ~ 0.18  屏幕中央一个发亮的节点（接住飞过来的内核）
+    //   0.15 ~ 0.75  从中心点开始递归地生长出决策树：
+    //                每一层节点从父节点位置插值到目标位置（向下扇出），
+    //                层与层之间错峰，3 层为止。
+    //   0.65 ~ 1.00  整棵树渐隐，根部一个 λ glyph 残留最久。
+    function drawAiArrival(p: number, cx: number, cy: number) {
+      const short = Math.min(width, height);
+      const easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
+
+      // 软背景
+      const wash = ctx!.createRadialGradient(cx, cy, 0, cx, cy, short * 0.7);
+      wash.addColorStop(0, rgba(arrivalColor, (1 - p) * 0.16));
+      wash.addColorStop(0.6, rgba(arrivalColor, (1 - p) * 0.05));
+      wash.addColorStop(1, rgba(arrivalColor, 0));
+      ctx!.fillStyle = wash;
+      ctx!.fillRect(0, 0, width, height);
+
+      const treeAlphaIn = easeOut(Math.min(1, p / 0.18));
+      const treeAlphaOut = Math.max(0, 1 - Math.max(0, (p - 0.65) / 0.35));
+      const treeAlpha = treeAlphaIn * treeAlphaOut;
+
+      // 根节点（接住"内核"的位置）
+      ctx!.fillStyle = rgba(arrivalColor, 0.92 * treeAlpha);
+      ctx!.beginPath();
+      ctx!.arc(cx, cy, 5.5 * (1 + (1 - treeAlphaIn) * 0.6), 0, Math.PI * 2);
+      ctx!.fill();
+
+      // 递归树展开：3 层，每层节点数 = 2^layer，向下扇出
+      const layerCount = 3;
+      const spreadY = short * 0.32;
+      const layerHeight = spreadY / layerCount;
+
+      ctx!.lineWidth = 1.1;
+      type Node = { x: number; y: number };
+      let prevLayer: Node[] = [{ x: cx, y: cy }];
+      for (let layer = 1; layer <= layerCount; layer += 1) {
+        const layerStart = 0.15 + layer * 0.08;
+        const layerProgress = Math.max(0, Math.min(1, (p - layerStart) / 0.28));
+        if (layerProgress <= 0) break;
+        const ease = easeOut(layerProgress);
+
+        const nodesInLayer = Math.pow(2, layer);
+        const spanX = short * 0.32 * (1 + layer * 0.4);
+        const y = cy + layer * layerHeight;
+        const nextLayer: Node[] = [];
+        for (let i = 0; i < nodesInLayer; i += 1) {
+          const parentIdx = Math.floor(i / 2);
+          const parent = prevLayer[parentIdx];
+          const targetX = cx - spanX * 0.5 + (spanX * i) / Math.max(1, nodesInLayer - 1);
+          const x = parent.x + (targetX - parent.x) * ease;
+          const yNow = parent.y + (y - parent.y) * ease;
+          nextLayer.push({ x, y: yNow });
+
+          // 边
+          ctx!.strokeStyle = rgba(arrivalColor, 0.55 * treeAlpha * layerProgress);
+          ctx!.beginPath();
+          ctx!.moveTo(parent.x, parent.y);
+          ctx!.lineTo(x, yNow);
+          ctx!.stroke();
+
+          // 节点（小圆点）
+          ctx!.fillStyle = rgba(arrivalColor, 0.78 * treeAlpha * layerProgress);
+          ctx!.beginPath();
+          ctx!.arc(x, yNow, 2.6 - layer * 0.4, 0, Math.PI * 2);
+          ctx!.fill();
+        }
+        prevLayer = nextLayer;
+      }
+
+      // glyph：根部正下方一点
+      if (arrivalGlyph) {
+        ctx!.font = `${Math.round(38 + treeAlphaIn * 14)}px Cormorant Garamond, serif`;
+        ctx!.textAlign = 'center';
+        ctx!.textBaseline = 'middle';
+        ctx!.fillStyle = rgba(arrivalColor, 0.78 * treeAlphaIn * Math.max(treeAlphaOut, 0.2));
+        ctx!.fillText(arrivalGlyph, cx, cy - short * 0.04);
+      }
+    }
+
+    // ---- Quant 接住：两条价格切片轨迹滑入，符号 σ 浮现 ----
+    function drawQuantArrival(p: number, cx: number, cy: number) {
+      const short = Math.min(width, height);
+      const easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
+
+      // 软背景
+      const wash = ctx!.createRadialGradient(cx, cy, 0, cx, cy, short * 0.75);
+      wash.addColorStop(0, rgba(arrivalColor, (1 - p) * 0.15));
+      wash.addColorStop(0.6, rgba(arrivalColor, (1 - p) * 0.05));
+      wash.addColorStop(1, rgba(arrivalColor, 0));
+      ctx!.fillStyle = wash;
+      ctx!.fillRect(0, 0, width, height);
+
+      // 两条切片轨迹：上下错位、从屏幕外滑入
+      const layers = [
+        { yOff: -short * 0.08, delay: 0.0 },
+        { yOff: short * 0.08, delay: 0.18 },
+      ];
+      const sliceWidth = short * 0.92;
+      const ptCount = 110;
+      ctx!.lineWidth = 1.1;
+      for (const layer of layers) {
+        const slideT = Math.max(0, Math.min(1, (p - layer.delay) / 0.45));
+        if (slideT <= 0) continue;
+        const slideEase = easeOut(slideT);
+        const slideX = (1 - slideEase) * sliceWidth * 0.6;  // 从右侧滑入
+        const alpha = slideEase * Math.max(0, 1 - Math.max(0, (p - 0.7) / 0.3));
+        ctx!.strokeStyle = rgba(arrivalColor, 0.65 * alpha);
+        ctx!.beginPath();
+        for (let i = 0; i < ptCount; i += 1) {
+          const t = i / (ptCount - 1);
+          const seed = i * 0.27 + layer.delay * 10;
+          const noise = Math.sin(seed) + Math.sin(seed * 2.3) * 0.4 + Math.sin(seed * 5.1) * 0.18;
+          const x = cx - sliceWidth / 2 + sliceWidth * t + slideX;
+          const y = cy + layer.yOff + noise * short * 0.045;
+          if (i === 0) ctx!.moveTo(x, y);
+          else ctx!.lineTo(x, y);
+        }
+        ctx!.stroke();
+
+        // 散点（每 8 个点画一个圆）
+        ctx!.fillStyle = rgba(arrivalColor, 0.85 * alpha);
+        for (let i = 0; i < ptCount; i += 8) {
+          const t = i / (ptCount - 1);
+          const seed = i * 0.27 + layer.delay * 10;
+          const noise = Math.sin(seed) + Math.sin(seed * 2.3) * 0.4 + Math.sin(seed * 5.1) * 0.18;
+          const x = cx - sliceWidth / 2 + sliceWidth * t + slideX;
+          const y = cy + layer.yOff + noise * short * 0.045;
+          ctx!.beginPath();
+          ctx!.arc(x, y, 1.6, 0, Math.PI * 2);
+          ctx!.fill();
+        }
+      }
+
+      // σ glyph：在两条轨迹之间居中
+      if (arrivalGlyph) {
+        const glyphAlpha = easeOut(Math.min(1, p / 0.4)) * Math.max(0, 1 - Math.max(0, (p - 0.7) / 0.3));
+        ctx!.font = `${Math.round(54 + glyphAlpha * 16)}px Cormorant Garamond, serif`;
+        ctx!.textAlign = 'center';
+        ctx!.textBaseline = 'middle';
+        ctx!.fillStyle = rgba(arrivalColor, 0.78 * glyphAlpha);
+        ctx!.fillText(arrivalGlyph, cx, cy);
+      }
+    }
+
+    // ---- Self 接住：从原点炸开的坐标系 + 缓慢稳定的辐线 ----
+    function drawSelfArrival(p: number, cx: number, cy: number) {
+      const short = Math.min(width, height);
+      const easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
+
+      // 软背景
+      const wash = ctx!.createRadialGradient(cx, cy, 0, cx, cy, short * 0.7);
+      wash.addColorStop(0, rgba(arrivalColor, (1 - p) * 0.16));
+      wash.addColorStop(0.6, rgba(arrivalColor, (1 - p) * 0.05));
+      wash.addColorStop(1, rgba(arrivalColor, 0));
+      ctx!.fillStyle = wash;
+      ctx!.fillRect(0, 0, width, height);
+
+      // 中心奇点：先大后稳
+      const pulseT = easeOut(Math.min(1, p / 0.25));
+      const fadeT = Math.max(0, 1 - Math.max(0, (p - 0.65) / 0.35));
+      ctx!.fillStyle = rgba(arrivalColor, 0.92 * pulseT * fadeT);
+      ctx!.beginPath();
+      ctx!.arc(cx, cy, 5 + (1 - pulseT) * 8, 0, Math.PI * 2);
+      ctx!.fill();
+
+      // 4 根从原点延伸的细线（x/y/对角 2 根），错峰生长
+      const directions = [
+        { dx: 1, dy: 0, delay: 0.05 },
+        { dx: 0, dy: -1, delay: 0.08 },
+        { dx: 0.7071, dy: 0.7071, delay: 0.12 },
+        { dx: -0.7071, dy: 0.7071, delay: 0.15 },
+      ];
+      const maxLen = short * 0.42;
+      ctx!.lineWidth = 1;
+      for (const d of directions) {
+        const growT = Math.max(0, Math.min(1, (p - d.delay) / 0.4));
+        if (growT <= 0) continue;
+        const len = maxLen * easeOut(growT);
+        const tipX = cx + d.dx * len;
+        const tipY = cy + d.dy * len;
+        const tailX = cx - d.dx * len * 0.3;
+        const tailY = cy - d.dy * len * 0.3;
+        ctx!.strokeStyle = rgba(arrivalColor, 0.7 * growT * fadeT);
+        ctx!.beginPath();
+        ctx!.moveTo(tailX, tailY);
+        ctx!.lineTo(tipX, tipY);
+        ctx!.stroke();
+        // tip 端一个小标记
+        ctx!.fillStyle = rgba(arrivalColor, 0.85 * growT * fadeT);
+        ctx!.beginPath();
+        ctx!.arc(tipX, tipY, 2, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+
+      // glyph （·）
+      if (arrivalGlyph) {
+        const glyphAlpha = easeOut(Math.min(1, p / 0.3)) * fadeT;
+        ctx!.font = `${Math.round(60 + glyphAlpha * 20)}px Cormorant Garamond, serif`;
+        ctx!.textAlign = 'center';
+        ctx!.textBaseline = 'middle';
+        ctx!.fillStyle = rgba(arrivalColor, 0.5 * glyphAlpha);
+        ctx!.fillText(arrivalGlyph, cx, cy - short * 0.06);
+      }
+    }
+
+    // ---- Journal 接住：横跨屏幕的时间线 + 节奏标记 + ∿ glyph ----
+    function drawJournalArrival(p: number, cx: number, cy: number) {
+      const short = Math.min(width, height);
+      const easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
+
+      // 软背景
+      const wash = ctx!.createRadialGradient(cx, cy, 0, cx, cy, short * 0.75);
+      wash.addColorStop(0, rgba(arrivalColor, (1 - p) * 0.14));
+      wash.addColorStop(0.6, rgba(arrivalColor, (1 - p) * 0.04));
+      wash.addColorStop(1, rgba(arrivalColor, 0));
+      ctx!.fillStyle = wash;
+      ctx!.fillRect(0, 0, width, height);
+
+      // 时间线：从中心向左右两端展开
+      const lineWidth = width * 0.92;
+      const halfW = lineWidth / 2;
+      const growT = easeOut(Math.min(1, p / 0.5));
+      const fadeT = Math.max(0, 1 - Math.max(0, (p - 0.7) / 0.3));
+      const drawHalfW = halfW * growT;
+
+      // 主时间线（带波纹）
+      ctx!.strokeStyle = rgba(arrivalColor, 0.7 * growT * fadeT);
+      ctx!.lineWidth = 1.2;
+      ctx!.beginPath();
+      const steps = 140;
+      for (let i = 0; i <= steps; i += 1) {
+        const t = i / steps;
+        const x = cx - drawHalfW + 2 * drawHalfW * t;
+        const noise = Math.sin(t * Math.PI * 5 + p * 4) * short * 0.025;
+        const y = cy + noise;
+        if (i === 0) ctx!.moveTo(x, y);
+        else ctx!.lineTo(x, y);
+      }
+      ctx!.stroke();
+
+      // 时间刻度（每 1/8 个一道）
+      ctx!.strokeStyle = rgba(arrivalColor, 0.5 * growT * fadeT);
+      ctx!.lineWidth = 1;
+      for (let i = 0; i <= 8; i += 1) {
+        const t = i / 8;
+        const x = cx - drawHalfW + 2 * drawHalfW * t;
+        const noise = Math.sin(t * Math.PI * 5 + p * 4) * short * 0.025;
+        const y = cy + noise;
+        ctx!.beginPath();
+        ctx!.moveTo(x, y - short * 0.03);
+        ctx!.lineTo(x, y + short * 0.03);
+        ctx!.stroke();
+      }
+
+      // 节奏标记点：散落在时间线上
+      ctx!.fillStyle = rgba(arrivalColor, 0.78 * growT * fadeT);
+      for (let i = 0; i < 16; i += 1) {
+        const tSeed = i * 0.13;
+        const t = (tSeed - Math.floor(tSeed));
+        const x = cx - drawHalfW + 2 * drawHalfW * t;
+        const noise = Math.sin(t * Math.PI * 5 + p * 4) * short * 0.025;
+        const yJitter = (Math.sin(i * 7) * 0.5) * short * 0.02;
+        const y = cy + noise + yJitter;
+        ctx!.beginPath();
+        ctx!.arc(x, y, 1.8, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+
+      // ∿ glyph：在时间线上方
+      if (arrivalGlyph) {
+        const glyphAlpha = easeOut(Math.min(1, p / 0.4)) * fadeT;
+        ctx!.font = `${Math.round(50 + glyphAlpha * 20)}px Cormorant Garamond, serif`;
+        ctx!.textAlign = 'center';
+        ctx!.textBaseline = 'middle';
+        ctx!.fillStyle = rgba(arrivalColor, 0.6 * glyphAlpha);
+        ctx!.fillText(arrivalGlyph, cx, cy - short * 0.1);
+      }
+    }
+
+    // ---- fallback：保留原圆形脉冲（其他 4 个节点暂时复用，等专属剧本上线再替换）----
+    function drawDefaultArrival(p: number, cx: number, cy: number) {
+      const ease = 1 - Math.pow(1 - p, 3);
+      const maxR = Math.max(width, height) * 0.62;
+
+      const wash = ctx!.createRadialGradient(cx, cy, 0, cx, cy, maxR * 0.85);
+      wash.addColorStop(0, rgba(arrivalColor, (1 - p) * 0.22));
+      wash.addColorStop(0.55, rgba(arrivalColor, (1 - p) * 0.08));
+      wash.addColorStop(1, rgba(arrivalColor, 0));
+      ctx!.fillStyle = wash;
+      ctx!.fillRect(0, 0, width, height);
+
+      const r = ease * maxR;
+      ctx!.strokeStyle = rgba(arrivalColor, (1 - p) * 0.55);
+      ctx!.lineWidth = 1.2;
+      ctx!.beginPath();
+      ctx!.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx!.stroke();
+
+      const r2 = Math.max(0, ease * maxR - 60);
+      if (r2 > 0) {
+        ctx!.strokeStyle = rgba(arrivalColor, (1 - p) * 0.28);
+        ctx!.lineWidth = 0.8;
+        ctx!.beginPath();
+        ctx!.arc(cx, cy, r2, 0, Math.PI * 2);
+        ctx!.stroke();
       }
     }
 
@@ -131,35 +584,21 @@ const { mode = 'triad', compact = false, projection = false } = Astro.props;
         arrivalActive = false;
         return;
       }
-      const ease = 1 - Math.pow(1 - p, 3);
       const cx = width * 0.5;
       const cy = height * 0.48;
-      const maxR = Math.max(width, height) * 0.62;
 
-      // Soft radial wash fading out
-      const wash = ctx!.createRadialGradient(cx, cy, 0, cx, cy, maxR * 0.85);
-      wash.addColorStop(0, rgba(arrivalColor, (1 - p) * 0.22));
-      wash.addColorStop(0.55, rgba(arrivalColor, (1 - p) * 0.08));
-      wash.addColorStop(1, rgba(arrivalColor, 0));
-      ctx!.fillStyle = wash;
-      ctx!.fillRect(0, 0, width, height);
-
-      // Expanding ring — the projection landing front
-      const r = ease * maxR;
-      ctx!.strokeStyle = rgba(arrivalColor, (1 - p) * 0.55);
-      ctx!.lineWidth = 1.2;
-      ctx!.beginPath();
-      ctx!.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx!.stroke();
-
-      // Secondary inner ring with slight delay
-      const r2 = Math.max(0, ease * maxR - 60);
-      if (r2 > 0) {
-        ctx!.strokeStyle = rgba(arrivalColor, (1 - p) * 0.28);
-        ctx!.lineWidth = 0.8;
-        ctx!.beginPath();
-        ctx!.arc(cx, cy, r2, 0, Math.PI * 2);
-        ctx!.stroke();
+      if (arrivalKind === 'icosahedron_ring') {
+        drawMathArrival(p, cx, cy);
+      } else if (arrivalKind === 'octahedron_core') {
+        drawAiArrival(p, cx, cy);
+      } else if (arrivalKind === 'dodecahedron_grid') {
+        drawQuantArrival(p, cx, cy);
+      } else if (arrivalKind === 'tetrahedron_cloud') {
+        drawSelfArrival(p, cx, cy);
+      } else if (arrivalKind === 'ring_particles') {
+        drawJournalArrival(p, cx, cy);
+      } else {
+        drawDefaultArrival(p, cx, cy);
       }
     }
 
