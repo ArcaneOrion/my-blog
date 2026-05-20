@@ -6,7 +6,6 @@
 
 import type { SceneSpec, SceneCtx } from './types';
 import { rgba } from './types';
-import { pickTransition } from '../transitions';
 
 // 五星球的颜色,用于卫星点
 const PLANET_COLORS: Array<[number, number, number]> = [
@@ -64,10 +63,11 @@ export const gatewayScene: SceneSpec = {
 
   hitTest: (x, y, sctx) => isInHitZone(x, y, sctx),
 
-  onClick: (sctx) => {
+  onClick: async (sctx) => {
     const { cx, cy, radius } = anchorCenter(sctx);
     const root = (sctx as any).blogRoot ?? '';
     const targetUrl = `${root}/observatory`.replace(/\/+/g, '/');
+    const { pickTransition } = await import('../transitions');
     const transition = pickTransition();
     transition.play({
       center: { x: cx, y: cy },
