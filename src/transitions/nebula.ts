@@ -5,6 +5,7 @@
 
 import type { TransitionSpec } from './types';
 import { createOverlay } from './types';
+import { navigate } from 'astro:transitions/client';
 
 const PARTICLE_COUNT = 220;
 
@@ -163,9 +164,13 @@ export const nebulaTransition: TransitionSpec = {
     const startTime = performance.now();
     const totalDur = 2500;
     let stopped = false;
+    let rAFId = 0;
 
     function tick(now: number) {
-      if (stopped) return;
+      if (stopped) {
+        cancelAnimationFrame(rAFId);
+        return;
+      }
       const t = now - startTime;
       ctx!.clearRect(0, 0, W, H);
 
@@ -198,10 +203,10 @@ export const nebulaTransition: TransitionSpec = {
       }
 
       if (t < totalDur + 200) {
-        requestAnimationFrame(tick);
+        rAFId = requestAnimationFrame(tick);
       }
     }
-    requestAnimationFrame(tick);
+    rAFId = requestAnimationFrame(tick);
 
     // T+2400ms:闪白 + 文字退
     setTimeout(() => {
@@ -213,10 +218,14 @@ export const nebulaTransition: TransitionSpec = {
 
     await new Promise((resolve) => setTimeout(resolve, 2800));
     stopped = true;
+    cancelAnimationFrame(rAFId);
     fade.style.transition = 'background 180ms linear';
     fade.style.background = 'rgba(251, 250, 247, 1)';
 
     await new Promise((resolve) => setTimeout(resolve, 200));
-    window.location.href = targetUrl;
+    navigate(targetUrl);
+    setTimeout(() => {
+      overlay.remove();
+    }, 600);
   },
 };

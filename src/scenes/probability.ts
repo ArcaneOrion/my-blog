@@ -11,9 +11,6 @@ interface Walker {
   speed: number;
 }
 
-// 模块级状态（浏览器端跨帧保留）
-let walkers: Walker[] = [];
-let lastStepTime = 0;
 const WALKER_COUNT = 5;
 const MAX_PATH_LEN = 90;
 
@@ -24,24 +21,24 @@ function anchorCenter(sctx: SceneCtx): { ax: number; ay: number; range: number }
   return { ax, ay, range };
 }
 
-function ensureWalkers(sctx: SceneCtx) {
-  if (walkers.length === WALKER_COUNT && walkers[0]?.path.length > 0) return;
+function ensureWalkers(sctx: SceneCtx, state: { walkers: Walker[], lastStepTime: number }) {
+  if (state.walkers.length === WALKER_COUNT && state.walkers[0]?.path.length > 0) return;
   const { ax, ay } = anchorCenter(sctx);
-  walkers = Array.from({ length: WALKER_COUNT }, (_, i) => ({
+  state.walkers = Array.from({ length: WALKER_COUNT }, (_, i) => ({
     path: [{ x: ax, y: ay }],
     hue: i / WALKER_COUNT,
     speed: 0.8 + (i / WALKER_COUNT) * 0.6,
   }));
-  lastStepTime = sctx.time;
+  state.lastStepTime = sctx.time;
 }
 
-function stepWalkers(sctx: SceneCtx) {
-  if (sctx.time - lastStepTime < 80) return;
-  lastStepTime = sctx.time;
+function stepWalkers(sctx: SceneCtx, state: { walkers: Walker[], lastStepTime: number }) {
+  if (sctx.time - state.lastStepTime < 80) return;
+  state.lastStepTime = sctx.time;
 
   const { ax, ay, range } = anchorCenter(sctx);
 
-  for (const w of walkers) {
+  for (const w of state.walkers) {
     const last = w.path[w.path.length - 1];
     // Box-Muller 高斯随机
     const u1 = Math.max(1e-6, Math.random());
@@ -84,8 +81,12 @@ export const probabilityScene: SceneSpec = {
   copy: {
     glyph: '∝',
     sectionLabel: 'iii. probability',
-    italicCopy: '每一步是一次抽样，\n看不见的分布在背后——\n期望存在，\n但每条路径都偏离它。',
-    sideNote: 'X ~ N(μ, σ²)\nE[X], Var[X]',
+    italicCopy: `每一步是一次抽样，
+看不见的分布在背后——
+期望存在，
+但每条路径都偏离它。`,
+    sideNote: `X ~ N(μ, σ²)
+E[X], Var[X]`,
   },
 
   getScreenAnchor: (sctx) => ({
@@ -95,26 +96,38 @@ export const probabilityScene: SceneSpec = {
 
   layout: (points, sctx) => {
     const { ax, ay, range } = anchorCenter(sctx);
-    ensureWalkers(sctx);
-    stepWalkers(sctx);
+
+    // 初始化并挂载状态到 points 的第一个节点上以供生命周期持久存储（隔离 View Transitions 变量污染）
+    const p0 = points[0];
+    if (!p0.meta) p0.meta = {};
+    if (!p0.meta.probState) {
+      p0.meta.probState = { walkers: [], lastStepTime: 0 };
+    }
+    const state = p0.meta.probState as { walkers: Walker[], lastStepTime: number };
+
+    ensureWalkers(sctx, state);
+    stepWalkers(sctx, state);
 
     // 用 walker 当前位置作为 5 个点的 target
     points.forEach((p, i) => {
-      if (i < walkers.length) {
-        const path = walkers[i].path;
+      if (!p.meta) p.meta = {};
+      if (i < state.walkers.length) {
+        const path = state.walkers[i].path;
         const last = path[path.length - 1];
         p.targetX = last.x;
         p.targetY = last.y;
         p.role = 'walker';
-        p.meta = { walkerIndex: i };
+        p.meta.walkerIndex = i; // 仅更新或添加 walkerIndex, 绝不覆盖 meta 容器，防止 probState 被销毁
       } else {
         // 其他点在 anchor 周围漂浮（散点样本感）
-        const radius = range * 0.7 * Math.sqrt((i - walkers.length) / (points.length - walkers.length));
+        const radius = range * 0.7 * Math.sqrt((i - state.walkers.length) / (points.length - state.walkers.length));
         const angle = (i * 137.5) * (Math.PI / 180); // 黄金角散布
         p.targetX = ax + Math.cos(angle) * radius;
         p.targetY = ay + Math.sin(angle) * radius;
         p.role = 'sample';
-        p.meta = {};
+        if ('walkerIndex' in p.meta) {
+          delete p.meta.walkerIndex;
+        }
       }
     });
   },
@@ -122,6 +135,10 @@ export const probabilityScene: SceneSpec = {
   drawLayers: (ctx, points, sctx) => {
     const { color, ink, time } = sctx;
     const { ax, ay, range } = anchorCenter(sctx);
+
+    const p0 = points[0];
+    const state = p0?.meta?.probState as { walkers: Walker[], lastStepTime: number } | undefined;
+    if (!state || !state.walkers.length) return;
 
     // 1. 软范围圆（采样范围）
     ctx.strokeStyle = rgba(ink, 0.08);
@@ -159,7 +176,7 @@ export const probabilityScene: SceneSpec = {
     ctx.stroke();
 
     // 4. 走廊：每条 walker 的轨迹
-    for (const w of walkers) {
+    for (const w of state.walkers) {
       ctx.lineWidth = 1.2;
       const len = w.path.length;
       for (let i = 1; i < len; i += 1) {

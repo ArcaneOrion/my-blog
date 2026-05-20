@@ -54,7 +54,9 @@ const { mode = 'triad', compact = false } = Astro.props;
     let lastFrameTime = 0;
     let paused = false;
 
-    const N = compact ? 36 : 72;
+    // 针对移动端自适应
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+    const N = compact ? 36 : (isMobile ? 36 : 72);
 
     const points: PointState[] = Array.from({ length: N }, (_, index) => {
       const seedA = Math.sin(index * 999) * 10000;
@@ -385,8 +387,14 @@ const { mode = 'triad', compact = false } = Astro.props;
       paused = document.hidden;
     }
 
+    let resizeFrame = 0;
+    function onResize() {
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(resize);
+    }
+
     resize();
-    window.addEventListener('resize', resize);
+    window.addEventListener('resize', onResize);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerleave', onPointerLeave);
     window.addEventListener('click', onClick);
@@ -397,7 +405,8 @@ const { mode = 'triad', compact = false } = Astro.props;
 
     document.addEventListener('astro:before-swap', () => {
       cancelAnimationFrame(frame);
-      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(resizeFrame);
+      window.removeEventListener('resize', onResize);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerleave', onPointerLeave);
       window.removeEventListener('click', onClick);
@@ -407,6 +416,11 @@ const { mode = 'triad', compact = false } = Astro.props;
     }, { once: true });
   }
 
-  const fields = document.querySelectorAll<HTMLElement>('[data-structure-field]');
-  fields.forEach(makeField);
+  function initFields() {
+    const fields = document.querySelectorAll<HTMLElement>('[data-structure-field]');
+    fields.forEach(makeField);
+  }
+
+  // 支持首入与 Astro SPA 路由软跳转后加载
+  document.addEventListener('astro:page-load', initFields);
 </script>

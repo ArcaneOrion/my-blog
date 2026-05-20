@@ -1,4 +1,5 @@
 ---
+import { ClientRouter } from 'astro:transitions';
 import '../styles/global.css';
 import { pathFor } from '../lib/site';
 
@@ -45,6 +46,8 @@ const imageURL = image.startsWith('http') ? image : pathFor(image);
   <meta property="twitter:title" content={title} />
   <meta property="twitter:description" content={description} />
   <meta property="twitter:image" content={imageURL} />
+
+  <ClientRouter />
 </head>
 <body class="min-h-screen bg-arcane-bg text-arcane-text">
   <slot />

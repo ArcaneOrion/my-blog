@@ -6,6 +6,7 @@
 
 import type { TransitionSpec } from './types';
 import { createOverlay } from './types';
+import { navigate } from 'astro:transitions/client';
 
 const RINGS = 14;
 const COLORS = [
@@ -170,6 +171,9 @@ export const wormholeTransition: TransitionSpec = {
     fade.style.background = 'rgba(251, 250, 247, 1)';
 
     await new Promise((resolve) => setTimeout(resolve, 200));
-    window.location.href = targetUrl;
+    navigate(targetUrl);
+    setTimeout(() => {
+      overlay.remove();
+    }, 600);
   },
 };

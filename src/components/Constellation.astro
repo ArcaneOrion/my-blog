@@ -295,8 +295,14 @@
       paused = document.hidden;
     }
 
+    let resizeFrame = 0;
+    function onResize() {
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(resize);
+    }
+
     resize();
-    window.addEventListener('resize', resize);
+    window.addEventListener('resize', onResize);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerleave', onPointerLeave);
     window.addEventListener('click', onClick);
@@ -305,7 +311,8 @@
 
     document.addEventListener('astro:before-swap', () => {
       cancelAnimationFrame(frame);
-      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(resizeFrame);
+      window.removeEventListener('resize', onResize);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerleave', onPointerLeave);
       window.removeEventListener('click', onClick);
@@ -313,8 +320,13 @@
     }, { once: true });
   }
 
-  const roots = document.querySelectorAll<HTMLElement>('[data-constellation]');
-  roots.forEach(makeConstellation);
+  function initConstellation() {
+    const roots = document.querySelectorAll<HTMLElement>('[data-constellation]');
+    roots.forEach(makeConstellation);
+  }
+
+  // 支持 Astro SPA 软跳转重新加载
+  document.addEventListener('astro:page-load', initConstellation);
 </script>
 
 <style>
