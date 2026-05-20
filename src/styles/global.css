@@ -150,6 +150,25 @@
     color: var(--color-text);
   }
 
+  .return-anchor {
+    position: fixed;
+    top: clamp(1.4rem, 3vh, 2rem);
+    left: clamp(1.4rem, 4vw, 2.6rem);
+    z-index: 40;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+    transition: color 200ms ease, transform 200ms ease;
+    animation: fade-in 1.2s ease 400ms both;
+  }
+
+  .return-anchor:hover {
+    color: var(--color-text);
+    transform: translateX(-2px);
+  }
+
   .prose-arcane {
     @apply prose prose-invert max-w-none;
     --tw-prose-body: var(--color-text);

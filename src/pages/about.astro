@@ -1,8 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import Nav from '../components/Nav.astro';
 import StructureField from '../components/StructureField.astro';
-import { domains } from '../lib/site';
+import { domains, pathFor } from '../lib/site';
 
 const domainList = Object.values(domains);
 
@@ -16,9 +15,8 @@ const principles = [
 
 <BaseLayout title="About — Arcane Orion">
   <StructureField mode="triad" />
+  <a href={pathFor('/observatory')} class="return-anchor">← observatory</a>
   <div class="relative z-10">
-    <Nav current="about" />
-    
     <main class="page-shell py-16">
       <section class="grid gap-10 py-10 lg:grid-cols-[0.82fr_1.18fr]">
         <div>
@@ -74,8 +72,8 @@ const principles = [
           <p class="mt-4 leading-8 text-arcane-text-secondary">
             当前阶段重点是学习、构建和记录。博客先作为思想结构的外部化界面，后续再加入更多交互图谱和神经科学主题。
           </p>
-          <a 
-            href="https://github.com/arcaneorion" 
+          <a
+            href="https://github.com/arcaneorion"
             target="_blank"
             rel="noopener noreferrer"
             class="mt-8 inline-block border border-arcane-border px-4 py-3 font-mono text-xs uppercase text-arcane-text-secondary transition-colors hover:border-arcane-math/20 hover:text-arcane-math"
@@ -85,11 +83,5 @@ const principles = [
         </div>
       </section>
     </main>
-    
-    <footer class="border-t border-arcane-border py-10">
-      <div class="page-shell text-center font-mono text-[0.72rem] uppercase text-arcane-text-dim">
-        arcane.orion © 2026
-      </div>
-    </footer>
   </div>
 </BaseLayout>
