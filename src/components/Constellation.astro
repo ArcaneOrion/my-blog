@@ -2571,6 +2571,14 @@
       updateSysInfo('five nodes', 'waiting', 'manifold');
     }
 
+    function onTouchTap(event: MouseEvent) {
+      if (systemState !== 'OVERVIEW') return;
+      const target = event.target as Element;
+      if (target.closest('button') || target.closest('.world-panel')) return;
+      updateHover(event.clientX, event.clientY);
+      if (hoveredNode) focusNode(hoveredNode);
+    }
+
     function onVisibility() {
       paused = document.hidden;
       if (!paused) {
@@ -2709,11 +2717,16 @@
     resetBtn.addEventListener('click', resetView);
     enterBtn.addEventListener('click', enterWorld);
     window.addEventListener('resize', onResize);
-    window.addEventListener('pointermove', onPointerMove);
-    container.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointerleave', onPointerLeave);
-    container.addEventListener('wheel', onWheel, { passive: false });
+    const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    if (isCoarsePointer) {
+      container.addEventListener('click', onTouchTap);
+    } else {
+      window.addEventListener('pointermove', onPointerMove);
+      container.addEventListener('pointerdown', onPointerDown);
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointerleave', onPointerLeave);
+      container.addEventListener('wheel', onWheel, { passive: false });
+    }
     document.addEventListener('visibilitychange', onVisibility);
 
     container.style.cursor = 'grab';
@@ -2729,11 +2742,15 @@
       resetBtn.removeEventListener('click', resetView);
       enterBtn.removeEventListener('click', enterWorld);
       window.removeEventListener('resize', onResize);
-      window.removeEventListener('pointermove', onPointerMove);
-      container.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('pointerleave', onPointerLeave);
-      container.removeEventListener('wheel', onWheel);
+      if (isCoarsePointer) {
+        container.removeEventListener('click', onTouchTap);
+      } else {
+        window.removeEventListener('pointermove', onPointerMove);
+        container.removeEventListener('pointerdown', onPointerDown);
+        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointerleave', onPointerLeave);
+        container.removeEventListener('wheel', onWheel);
+      }
       document.removeEventListener('visibilitychange', onVisibility);
       if (activeEntry && focusedNode) {
         const w = worlds.find((item) => item.data.id === focusedNode!.id);

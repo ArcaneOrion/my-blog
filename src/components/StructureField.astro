@@ -915,9 +915,12 @@ const { mode = 'triad', compact = false, projection = false } = Astro.props;
     }
 
     resize();
+    const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
     window.addEventListener('resize', onResize);
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerleave', onPointerLeave);
+    if (!isCoarsePointer) {
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerleave', onPointerLeave);
+    }
     window.addEventListener('click', onClick);
     window.addEventListener('structure-mode', onMode);
     window.addEventListener('structure-stage', onStage);
@@ -929,8 +932,10 @@ const { mode = 'triad', compact = false, projection = false } = Astro.props;
       cancelAnimationFrame(frame);
       cancelAnimationFrame(resizeFrame);
       window.removeEventListener('resize', onResize);
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerleave', onPointerLeave);
+      if (!isCoarsePointer) {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerleave', onPointerLeave);
+      }
       window.removeEventListener('click', onClick);
       window.removeEventListener('structure-mode', onMode);
       window.removeEventListener('structure-stage', onStage);

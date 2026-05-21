@@ -295,15 +295,18 @@
 
   .home-stage {
     min-height: 92vh;
+    min-height: 92dvh;
   }
 
   .home-stage--hero {
     min-height: calc(100vh - 4rem);
+    min-height: calc(100dvh - 4rem);
   }
 
   /* Gateway 终点仪式 stage:中心大字"入口"+ 圆环(canvas 渲染) */
   .home-stage--portal {
     min-height: 100vh;
+    min-height: 100dvh;
   }
 
   .portal-hero {
@@ -345,6 +348,12 @@
     padding-top: 3.5rem;
   }
 
+  @media (max-width: 640px) {
+    .hero-frame {
+      padding-top: 1.6rem;
+    }
+  }
+
   .hero-meta {
     margin: 0;
     font-family: var(--font-mono);
@@ -367,6 +376,13 @@
     --narrative-stretch-amp: 0.008em;
     --narrative-stagger: 0;
     --narrative-window: 0.45;
+  }
+
+  @media (max-width: 640px) {
+    .hero-name {
+      margin-top: 1.2rem;
+      font-size: clamp(2.4rem, 12vw, 3.4rem);
+    }
   }
 
   .hero-name-sep {
@@ -407,6 +423,17 @@
     --narrative-stretch-amp: 0.008em;
     --narrative-stagger: 0.5;
     --narrative-window: 0.45;
+  }
+
+  @media (max-width: 640px) {
+    .hero-coord {
+      margin-top: 1rem;
+    }
+
+    .hero-motto {
+      margin-top: 2rem;
+      line-height: 1.7;
+    }
   }
 
   .portal-sub {
@@ -492,6 +519,16 @@
     animation: fade-in 1400ms ease 600ms both;
   }
 
+  @media (max-width: 640px) {
+    .sys-info {
+      top: 1rem;
+      right: 1rem;
+      font-size: 0.5rem;
+      letter-spacing: 0.18em;
+      line-height: 1.6;
+    }
+  }
+
   .sys-info p {
     margin: 0;
     transition: opacity 600ms ease;
@@ -551,6 +588,14 @@
     letter-spacing: calc(0.012em + var(--narrative-stretch) * 0.10em);
     max-width: min(34rem, 42vw);
     text-wrap: balance;
+  }
+
+  @media (max-width: 640px) {
+    .narrative-quote {
+      max-width: min(20rem, 84vw);
+      font-size: clamp(1.05rem, 4.6vw, 1.35rem);
+      line-height: 1.6;
+    }
   }
 
   .narrative-quote[data-narrative-align="left"] {
