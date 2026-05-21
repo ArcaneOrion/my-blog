@@ -740,7 +740,7 @@
       },
     };
 
-    // ---------- aiEntryProgram：八面体递归分裂 + 内核自反射 + 沿裂缝穿入 ----------
+    // ---------- aiEntryProgram：attention lattice 收敛 + 递归核心穿入 ----------
     //
     // 视觉剧本（duration=1600ms）：
     //   pA 0   ~ 0.28   外层八面体的 8 个三角面整体绕中心做"呼吸"（轻微 scale 脉冲），
@@ -763,11 +763,19 @@
     interface AiEntryRuntime {
       outerShell: THREE.Mesh;        // 外层八面体（建立感）
       core: THREE.Mesh;              // 内核 dodecahedron（接管视觉穿过镜头）
+      lattice: THREE.LineSegments;
+      latticeMaterial: THREE.LineBasicMaterial;
+      latentPoints: THREE.Points;
+      latentMaterial: THREE.PointsMaterial;
+      latentPositions: Float32Array;
+      latentHome: Float32Array;
+      latentTarget: Float32Array;
       shards: THREE.Group;
       shardItems: AiShard[];
       shardMaterial: THREE.MeshBasicMaterial;
       enterAxis: THREE.Vector3;
       sideAxis: THREE.Vector3;
+      upAxis: THREE.Vector3;
       worldCenter: THREE.Vector3;
       shellReleased: boolean;
     }
@@ -810,6 +818,54 @@
         );
         core.position.copy(worldCenter);
         sc.add(core);
+
+        const upAxis = new THREE.Vector3().crossVectors(sideAxis, enterAxis).normalize();
+        const latticePositions: number[] = [];
+        const latticeSpan = r0 * 2.35;
+        [-0.42, 0, 0.42].forEach((depth) => {
+          for (let i = -3; i <= 3; i += 1) {
+            const u = (i / 3) * latticeSpan;
+            const a = sideAxis.clone().multiplyScalar(u).add(upAxis.clone().multiplyScalar(-latticeSpan)).add(enterAxis.clone().multiplyScalar(depth * r0));
+            const b = sideAxis.clone().multiplyScalar(u).add(upAxis.clone().multiplyScalar(latticeSpan)).add(enterAxis.clone().multiplyScalar(depth * r0));
+            const c = sideAxis.clone().multiplyScalar(-latticeSpan).add(upAxis.clone().multiplyScalar(u)).add(enterAxis.clone().multiplyScalar(depth * r0));
+            const d = sideAxis.clone().multiplyScalar(latticeSpan).add(upAxis.clone().multiplyScalar(u)).add(enterAxis.clone().multiplyScalar(depth * r0));
+            latticePositions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z, d.x, d.y, d.z);
+          }
+        });
+        const latticeGeom = new THREE.BufferGeometry();
+        latticeGeom.setAttribute('position', new THREE.Float32BufferAttribute(latticePositions, 3));
+        const latticeMaterial = new THREE.LineBasicMaterial({ color: node.color, transparent: true, opacity: 0, depthWrite: false });
+        const lattice = new THREE.LineSegments(latticeGeom, latticeMaterial);
+        lattice.position.copy(worldCenter);
+        sc.add(lattice);
+
+        const latentCount = 96;
+        const latentPositions = new Float32Array(latentCount * 3);
+        const latentHome = new Float32Array(latentCount * 3);
+        const latentTarget = new Float32Array(latentCount * 3);
+        const octaTargets = [
+          new THREE.Vector3(r0, 0, 0), new THREE.Vector3(-r0, 0, 0),
+          new THREE.Vector3(0, r0, 0), new THREE.Vector3(0, -r0, 0),
+          new THREE.Vector3(0, 0, r0), new THREE.Vector3(0, 0, -r0),
+        ];
+        for (let i = 0; i < latentCount; i += 1) {
+          const col = i % 8;
+          const row = Math.floor(i / 8) % 6;
+          const plane = Math.floor(i / 48);
+          const home = sideAxis.clone().multiplyScalar((col / 7 - 0.5) * latticeSpan * 1.65)
+            .add(upAxis.clone().multiplyScalar((row / 5 - 0.5) * latticeSpan * 1.35))
+            .add(enterAxis.clone().multiplyScalar((plane - 0.5) * r0 * 0.72));
+          const target = octaTargets[i % octaTargets.length].clone().multiplyScalar(0.68 + (Math.sin(i * 5.1) * 0.5 + 0.5) * 0.22);
+          latentHome.set([home.x, home.y, home.z], i * 3);
+          latentTarget.set([target.x, target.y, target.z], i * 3);
+          latentPositions.set([home.x, home.y, home.z], i * 3);
+        }
+        const latentGeom = new THREE.BufferGeometry();
+        latentGeom.setAttribute('position', new THREE.BufferAttribute(latentPositions, 3));
+        const latentMaterial = new THREE.PointsMaterial({ color: node.color, size: 0.07, transparent: true, opacity: 0, depthWrite: false });
+        const latentPoints = new THREE.Points(latentGeom, latentMaterial);
+        latentPoints.position.copy(worldCenter);
+        sc.add(latentPoints);
 
         // shards：从外壳 OctahedronGeometry(detail=0) 取出 8 个面，
         // 然后做"3 层"分裂——每个原始面派生 4 个更小的三角片，再每个更小的派生 4 个…
@@ -903,11 +959,19 @@
         return {
           outerShell,
           core,
+          lattice,
+          latticeMaterial,
+          latentPoints,
+          latentMaterial,
+          latentPositions,
+          latentHome,
+          latentTarget,
           shards,
           shardItems,
           shardMaterial,
           enterAxis,
           sideAxis,
+          upAxis,
           worldCenter,
           shellReleased: false,
         } as AiEntryRuntime;
@@ -953,6 +1017,28 @@
         const r = _runtime as AiEntryRuntime;
         const r0 = refs.node.planetSize;
 
+        const latticeOp = phase.p < 0.72
+          ? 0.34 * easeOut3(Math.min(1, phase.p / 0.22))
+          : 0.34 * Math.max(0, 1 - (phase.p - 0.72) / 0.22);
+        r.latticeMaterial.opacity += (latticeOp - r.latticeMaterial.opacity) * 0.22;
+        r.lattice.rotation.y += 0.004 + phase.p * 0.008;
+
+        const condense = easeInOut3(THREE.MathUtils.clamp((phase.p - 0.06) / 0.5, 0, 1));
+        for (let i = 0; i < r.latentPositions.length / 3; i += 1) {
+          const i3 = i * 3;
+          const delay = (i % 8) * 0.016;
+          const k = easeInOut3(THREE.MathUtils.clamp((condense - delay) / Math.max(0.001, 1 - delay), 0, 1));
+          r.latentPositions[i3] = THREE.MathUtils.lerp(r.latentHome[i3], r.latentTarget[i3], k);
+          r.latentPositions[i3 + 1] = THREE.MathUtils.lerp(r.latentHome[i3 + 1], r.latentTarget[i3 + 1], k);
+          r.latentPositions[i3 + 2] = THREE.MathUtils.lerp(r.latentHome[i3 + 2], r.latentTarget[i3 + 2], k);
+        }
+        (r.latentPoints.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+        const latentOp = phase.p < 0.82
+          ? 0.66 * easeOut3(Math.min(1, phase.p / 0.24))
+          : 0.66 * Math.max(0, 1 - (phase.p - 0.82) / 0.16);
+        r.latentMaterial.opacity += (latentOp - r.latentMaterial.opacity) * 0.22;
+        r.latentMaterial.size = 0.06 + condense * 0.045;
+
         // 外壳：pA 段轻微脉冲呼吸，pB 段开始裂开（材质淡出），pC 段消失
         const outerMat = r.outerShell.material as THREE.MeshBasicMaterial;
         const breath = 1 + Math.sin(phase.elapsed * 6 + phase.p * 8) * 0.04 * (1 - phase.p);
@@ -961,69 +1047,40 @@
         r.outerShell.rotation.x += 0.005 + phase.p * 0.03;
         let outerOpTarget: number;
         if (phase.p < 0.25) outerOpTarget = 0.5 + 0.2 * easeOut3(phase.p / 0.25);
-        else if (phase.p < 0.55) outerOpTarget = 0.7 * (1 - (phase.p - 0.25) / 0.3);
+        else if (phase.p < 0.72) outerOpTarget = 0.58 * (1 - (phase.p - 0.25) / 0.47);
         else outerOpTarget = 0;
         outerMat.opacity += (outerOpTarget - outerMat.opacity) * 0.2;
 
-        // 释放 shards
-        if (phase.p > 0.22 && !r.shellReleased) {
-          r.shellReleased = true;
-          r.shardItems.forEach((s) => { s.mesh.visible = true; });
-        }
+        r.shardItems.forEach((s) => { s.mesh.visible = false; });
+        r.shardMaterial.opacity += (0 - r.shardMaterial.opacity) * 0.3;
 
         // 内核：先收缩到 ~0.05r0（自反射的"奇点"瞬间），再反弹到 1.6r0 朝镜头冲过来
         const coreMat = r.core.material as THREE.MeshBasicMaterial;
         let coreScale: number;
-        if (phase.p < 0.45) {
-          // 收缩
-          const k = easeInOut3(phase.p / 0.45);
-          coreScale = THREE.MathUtils.lerp(1.0, 0.06, k);
-        } else if (phase.p < 0.65) {
-          // 奇点停留
-          coreScale = 0.06 + Math.sin((phase.p - 0.45) * 30) * 0.04;
+        if (phase.p < 0.42) {
+          // 收缩但不消失，避免中段空白
+          const k = easeInOut3(phase.p / 0.42);
+          coreScale = THREE.MathUtils.lerp(1.0, 0.34, k);
+        } else if (phase.p < 0.66) {
+          // 保持一个可见的递归核心呼吸
+          coreScale = 0.34 + Math.sin((phase.p - 0.42) * 34) * 0.06;
         } else {
           // 反弹放大并朝镜头冲过来
-          const k = easeInPow((phase.p - 0.65) / 0.35, 1.6);
-          coreScale = THREE.MathUtils.lerp(0.06, 2.2, k);
+          const k = easeInPow((phase.p - 0.66) / 0.34, 1.6);
+          coreScale = THREE.MathUtils.lerp(0.34, 2.05, k);
         }
         r.core.scale.setScalar(coreScale);
         // 内核位置：pC 段沿 enterAxis 朝镜头方向"冲出来"一段
-        const corePushOut = phase.p > 0.65 ? (phase.p - 0.65) / 0.35 * r0 * 1.6 : 0;
+        const corePushOut = phase.p > 0.66 ? (phase.p - 0.66) / 0.34 * r0 * 1.6 : 0;
         r.core.position.copy(r.worldCenter).add(r.enterAxis.clone().multiplyScalar(corePushOut));
         r.core.rotation.y += 0.04 + (phase.p > 0.45 ? 0.18 : 0);
         r.core.rotation.x += 0.025;
         // 内核透明度：奇点之前不透明，反弹时随 scale 反向淡出
         let coreOp: number;
-        if (phase.p < 0.65) coreOp = 0.85;
-        else coreOp = 0.85 * (1 - Math.max(0, (phase.p - 0.78) / 0.22));
+        if (phase.p < 0.74) coreOp = 0.88;
+        else coreOp = 0.88 * (1 - Math.max(0, (phase.p - 0.84) / 0.16));
         coreMat.opacity += (coreOp - coreMat.opacity) * 0.22;
 
-        // shards：按 layer 错峰释放、加速远离
-        if (r.shellReleased) {
-          const tBase = Math.max(0, (phase.p - 0.22) / 0.78);  // 0..1
-          r.shardItems.forEach((s, idx) => {
-            const layerDelay = s.layer * 0.08;  // 80ms 相对错峰
-            const tShard = Math.max(0, Math.min(1, (tBase - layerDelay) / Math.max(0.001, 1 - layerDelay)));
-            if (tShard <= 0) {
-              s.mesh.visible = false;
-              return;
-            }
-            s.mesh.visible = true;
-            const fly = 2.6 * Math.pow(tShard, 1.4);
-            // 飞散方向 = 法向 + 一点 tangent（避免完全径向，看起来更乱）
-            const dir = s.normal.clone().multiplyScalar(fly).add(s.tangent.clone().multiplyScalar(fly * 0.3));
-            s.mesh.position.copy(s.offset).add(dir.multiplyScalar(r0 * 0.7));
-            const spin = s.spin + tShard * Math.PI * 2.4;
-            s.mesh.rotation.x = spin * 0.7;
-            s.mesh.rotation.y = spin * 1.1;
-            s.mesh.rotation.z = spin * 0.4 * (1 + s.layer * 0.3);
-          });
-          // shards 透明度：随主进度先升后降
-          const shardOp = phase.p < 0.55
-            ? 0.75 * easeOut3((phase.p - 0.22) / 0.33)
-            : 0.75 * (1 - (phase.p - 0.55) / 0.45);
-          r.shardMaterial.opacity += (Math.max(0, shardOp) - r.shardMaterial.opacity) * 0.25;
-        }
       },
 
       updateFocusNode(_runtime, refs, phase) {
@@ -1045,13 +1102,17 @@
         const r = _runtime as AiEntryRuntime;
         refs.scene.remove(r.outerShell); disposeObject3D(r.outerShell);
         refs.scene.remove(r.core); disposeObject3D(r.core);
+        refs.scene.remove(r.lattice); disposeObject3D(r.lattice);
+        refs.scene.remove(r.latentPoints);
+        r.latentPoints.geometry.dispose();
+        r.latentMaterial.dispose();
         r.shardItems.forEach((s) => s.mesh.geometry.dispose());
         r.shardMaterial.dispose();
         refs.scene.remove(r.shards);
       },
     };
 
-    // ---------- quantEntryProgram：外壳碎面翻开 + 多层市场切片浮现 + 镜头侧滑 ----------
+    // ---------- quantEntryProgram：测量网格校准 + 多层市场切片浮现 + 镜头侧滑 ----------
     //
     // 视觉剧本（duration=1600ms）：
     //   pA 0   ~ 0.25   外壳（dodecahedron wireframe）加速旋转 + 一层金色的 point 内核浮现
@@ -1080,6 +1141,11 @@
       panels: THREE.Group;
       panelItems: QuantPanel[];
       panelMaterial: THREE.MeshBasicMaterial;
+      measureGrid: THREE.LineSegments;
+      measureGridMaterial: THREE.LineBasicMaterial;
+      signalCurve: THREE.Line;
+      signalCurveMaterial: THREE.LineBasicMaterial;
+      signalPointCount: number;
       slices: QuantSlice[];
       enterAxis: THREE.Vector3;
       sideAxis: THREE.Vector3;
@@ -1157,6 +1223,41 @@
         }
         baseGeom.dispose();
 
+        const gridPositions: number[] = [];
+        const gridSpan = r0 * 3.1;
+        for (let i = -4; i <= 4; i += 1) {
+          const u = (i / 4) * gridSpan;
+          const a = sideAxis.clone().multiplyScalar(u).add(upAxis.clone().multiplyScalar(-gridSpan));
+          const b = sideAxis.clone().multiplyScalar(u).add(upAxis.clone().multiplyScalar(gridSpan));
+          const c = sideAxis.clone().multiplyScalar(-gridSpan).add(upAxis.clone().multiplyScalar(u));
+          const d = sideAxis.clone().multiplyScalar(gridSpan).add(upAxis.clone().multiplyScalar(u));
+          gridPositions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z, d.x, d.y, d.z);
+        }
+        const measureGridGeom = new THREE.BufferGeometry();
+        measureGridGeom.setAttribute('position', new THREE.Float32BufferAttribute(gridPositions, 3));
+        const measureGridMaterial = new THREE.LineBasicMaterial({ color: node.color, transparent: true, opacity: 0, depthWrite: false });
+        const measureGrid = new THREE.LineSegments(measureGridGeom, measureGridMaterial);
+        measureGrid.position.copy(worldCenter);
+        sc.add(measureGrid);
+
+        const signalPointCount = 96;
+        const signalPositions = new Float32Array(signalPointCount * 3);
+        for (let i = 0; i < signalPointCount; i += 1) {
+          const t = i / (signalPointCount - 1);
+          const x = (t - 0.5) * gridSpan * 1.7;
+          const y = (Math.sin(t * Math.PI * 2.4) * 0.34 + Math.sin(t * Math.PI * 7.2) * 0.08) * r0;
+          const z = (Math.cos(t * Math.PI * 2) * 0.14 + (t - 0.5) * 0.16) * r0;
+          const p = sideAxis.clone().multiplyScalar(x).add(upAxis.clone().multiplyScalar(y)).add(enterAxis.clone().multiplyScalar(z));
+          signalPositions.set([p.x, p.y, p.z], i * 3);
+        }
+        const signalCurveGeom = new THREE.BufferGeometry();
+        signalCurveGeom.setAttribute('position', new THREE.BufferAttribute(signalPositions, 3));
+        signalCurveGeom.setDrawRange(0, 2);
+        const signalCurveMaterial = new THREE.LineBasicMaterial({ color: node.color, transparent: true, opacity: 0, depthWrite: false });
+        const signalCurve = new THREE.Line(signalCurveGeom, signalCurveMaterial);
+        signalCurve.position.copy(worldCenter);
+        sc.add(signalCurve);
+
         // 切片：3 层水平 Points 散点，每层一条带噪声的价格轨迹
         const slices: QuantSlice[] = [];
         const layerCount = 3;
@@ -1204,6 +1305,11 @@
           panels,
           panelItems,
           panelMaterial,
+          measureGrid,
+          measureGridMaterial,
+          signalCurve,
+          signalCurveMaterial,
+          signalPointCount,
           slices,
           enterAxis,
           sideAxis,
@@ -1260,6 +1366,19 @@
         const r = _runtime as QuantEntryRuntime;
         const r0 = refs.node.planetSize;
 
+        const gridOp = phase.p < 0.78
+          ? 0.34 * easeOut3(THREE.MathUtils.clamp((phase.p - 0.08) / 0.32, 0, 1))
+          : 0.34 * Math.max(0, 1 - (phase.p - 0.78) / 0.18);
+        r.measureGridMaterial.opacity += (gridOp - r.measureGridMaterial.opacity) * 0.22;
+        r.measureGrid.scale.setScalar(0.78 + easeOut3(Math.min(1, phase.p / 0.42)) * 0.22 + Math.max(0, (phase.p - 0.68) / 0.32) * 0.5);
+
+        const signalDraw = Math.max(2, Math.floor(r.signalPointCount * easeOut3(THREE.MathUtils.clamp((phase.p - 0.18) / 0.36, 0, 1))));
+        r.signalCurve.geometry.setDrawRange(0, signalDraw);
+        const signalOp = phase.p < 0.86
+          ? 0.68 * easeOut3(THREE.MathUtils.clamp((phase.p - 0.18) / 0.28, 0, 1))
+          : 0.68 * Math.max(0, 1 - (phase.p - 0.86) / 0.14);
+        r.signalCurveMaterial.opacity += (signalOp - r.signalCurveMaterial.opacity) * 0.22;
+
         // 整体 panels 加速旋转（pA 段）
         const spinSpeed = THREE.MathUtils.lerp(0.005, 0.04, easeInPow(Math.min(1, phase.p / 0.4), 1.8));
         r.panels.rotation.y += spinSpeed;
@@ -1272,20 +1391,14 @@
         else panelOp = Math.max(0, 0.24 * (1 - (phase.p - 0.7) / 0.3));
         r.panelMaterial.opacity += (panelOp - r.panelMaterial.opacity) * 0.2;
 
-        // 每个 panel 在 pB 段做 hinge 翻开 + 向外漂
-        const unfoldT = Math.max(0, Math.min(1, (phase.p - 0.2) / 0.45));
-        const flyT = Math.max(0, (phase.p - 0.2) / 0.8);
+        // 面片不再碎裂翻飞，只作为被测量网格校准出的整体十二面体表面
         r.panelItems.forEach((p) => {
-          // hinge 翻开：mesh 绕 hingeAxis（局部坐标系下）旋转 ~60°
-          // 用 quaternion 累积旋转，但每帧 set 比 add 更稳
-          const angle = unfoldT * Math.PI / 3;  // 60°
-          p.mesh.quaternion.setFromAxisAngle(p.hingeAxis, angle);
-          // 向外漂
-          const fly = flyT * r0 * 1.8;
-          p.mesh.position.copy(p.offset).add(p.flyDir.clone().multiplyScalar(fly));
-          // 自转
-          const extraRot = new THREE.Quaternion().setFromAxisAngle(p.normal, p.spin + flyT * Math.PI);
-          p.mesh.quaternion.multiplyQuaternions(extraRot, p.mesh.quaternion);
+          const calibrate = easeInOut3(Math.min(1, phase.p / 0.42));
+          const measured = p.offset.clone().multiplyScalar(0.68 + calibrate * 0.32);
+          p.mesh.position.copy(measured);
+          p.mesh.quaternion.identity();
+          const breathe = 1 + Math.sin(phase.elapsed * 5 + p.spin) * 0.025 * (1 - phase.p);
+          p.mesh.scale.setScalar(breathe);
         });
 
         // 切片：每层独立 reveal 进度
@@ -1322,6 +1435,8 @@
         r.panelItems.forEach((p) => p.mesh.geometry.dispose());
         r.panelMaterial.dispose();
         refs.scene.remove(r.panels);
+        refs.scene.remove(r.measureGrid); disposeObject3D(r.measureGrid);
+        refs.scene.remove(r.signalCurve); disposeObject3D(r.signalCurve);
         r.slices.forEach((s) => {
           refs.scene.remove(s.group);
           s.points.geometry.dispose();
@@ -1604,7 +1719,18 @@
     //                    镜头从俯视位置侧滑到沿 +x 方向的"擦地视角"，
     //                    内核被时间线"拉走"——也跟着 +x 飞出
 
+    interface JournalPage {
+      mesh: THREE.Mesh;
+      origin: THREE.Vector3;
+      delay: number;
+    }
+
     interface JournalEntryRuntime {
+      pages: THREE.Group;
+      pageItems: JournalPage[];
+      pageMaterial: THREE.MeshBasicMaterial;
+      spineLines: THREE.LineSegments;
+      spineMaterial: THREE.LineBasicMaterial;
       ringPoints: THREE.Points;
       ringMaterial: THREE.PointsMaterial;
       ringPositions: Float32Array;       // 当前位置
@@ -1633,6 +1759,32 @@
         const timelineUp = new THREE.Vector3().crossVectors(timelineAxis, enterAxis).normalize();
         // 镜头最终方向：沿 timelineAxis 反向看过去（让时间线横在前面）
         const sideViewAxis = enterAxis.clone().multiplyScalar(0.4).add(timelineAxis.clone().multiplyScalar(0.85)).normalize();
+
+        const pages = new THREE.Group();
+        pages.position.copy(worldCenter);
+        sc.add(pages);
+        const pageMaterial = new THREE.MeshBasicMaterial({ color: node.color, side: THREE.DoubleSide, transparent: true, opacity: 0, depthWrite: false });
+        const pageItems: JournalPage[] = [];
+        const pageCount = 9;
+        for (let i = 0; i < pageCount; i += 1) {
+          const mesh = new THREE.Mesh(new THREE.PlaneGeometry(r0 * (1.0 + (i % 3) * 0.14), r0 * 0.42, 1, 1), pageMaterial);
+          const origin = timelineAxis.clone().multiplyScalar((i - (pageCount - 1) / 2) * r0 * 0.22)
+            .add(timelineUp.clone().multiplyScalar(Math.sin(i * 1.7) * r0 * 0.12))
+            .add(enterAxis.clone().multiplyScalar((i - (pageCount - 1) / 2) * r0 * 0.04));
+          mesh.position.copy(origin);
+          mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), enterAxis);
+          mesh.rotateZ((i - 4) * 0.04);
+          pages.add(mesh);
+          pageItems.push({ mesh, origin, delay: i * 0.026 });
+        }
+
+        const spinePositions = new Float32Array(pageCount * 6);
+        const spineGeom = new THREE.BufferGeometry();
+        spineGeom.setAttribute('position', new THREE.BufferAttribute(spinePositions, 3));
+        const spineMaterial = new THREE.LineBasicMaterial({ color: node.color, transparent: true, opacity: 0, depthWrite: false });
+        const spineLines = new THREE.LineSegments(spineGeom, spineMaterial);
+        spineLines.position.copy(worldCenter);
+        sc.add(spineLines);
 
         // 环粒子
         const particleCount = 90;
@@ -1676,6 +1828,11 @@
         sc.add(core);
 
         return {
+          pages,
+          pageItems,
+          pageMaterial,
+          spineLines,
+          spineMaterial,
           ringPoints,
           ringMaterial,
           ringPositions: positions,
@@ -1737,6 +1894,39 @@
         const particleCount = r.ringInitialAngles.length;
         const ringRadius = r0 * 1.25;
 
+        const foldPages = easeInOut3(THREE.MathUtils.clamp((phase.p - 0.05) / 0.38, 0, 1));
+        const unrollPages = easeInOut3(THREE.MathUtils.clamp((phase.p - 0.48) / 0.34, 0, 1));
+        r.pageItems.forEach((page, idx) => {
+          const local = easeInOut3(THREE.MathUtils.clamp((foldPages - page.delay) / Math.max(0.001, 1 - page.delay), 0, 1));
+          const theta = (idx / r.pageItems.length) * Math.PI * 2 + phase.elapsed * 0.18;
+          const ringPos = r.timelineAxis.clone().multiplyScalar(Math.cos(theta) * r0 * 0.82)
+            .add(r.timelineUp.clone().multiplyScalar(Math.sin(theta) * r0 * 0.26))
+            .add(r.enterAxis.clone().multiplyScalar(Math.sin(theta) * r0 * 0.12));
+          const linePos = r.timelineAxis.clone().multiplyScalar((idx / (r.pageItems.length - 1) - 0.5) * r0 * 4.1);
+          page.mesh.position.copy(page.origin).lerp(ringPos, local).lerp(linePos, unrollPages);
+          page.mesh.scale.set(1 - unrollPages * 0.4, 1 - local * 0.18, 1);
+          page.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), r.enterAxis);
+          page.mesh.rotateZ((idx - 4) * 0.04 + local * Math.PI * 0.28 + unrollPages * Math.PI * 0.08);
+
+          const posArr = (r.spineLines.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
+          const start = idx * 6;
+          posArr[start] = page.origin.x;
+          posArr[start + 1] = page.origin.y;
+          posArr[start + 2] = page.origin.z;
+          posArr[start + 3] = page.mesh.position.x;
+          posArr[start + 4] = page.mesh.position.y;
+          posArr[start + 5] = page.mesh.position.z;
+        });
+        (r.spineLines.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+        const spineOp = phase.p < 0.8
+          ? 0.42 * easeOut3(Math.min(1, phase.p / 0.3))
+          : 0.42 * Math.max(0, 1 - (phase.p - 0.8) / 0.2);
+        r.spineMaterial.opacity += (spineOp - r.spineMaterial.opacity) * 0.22;
+        const pageOp = phase.p < 0.82
+          ? 0.32 * easeOut3(Math.min(1, phase.p / 0.18))
+          : 0.32 * Math.max(0, 1 - (phase.p - 0.82) / 0.18);
+        r.pageMaterial.opacity += (pageOp - r.pageMaterial.opacity) * 0.22;
+
         // 环加速自转（pA 段）：通过整体绕 timelineUp 自转的角度（不改 positions，只改 ringPoints.rotation）
         const spinSpeed = THREE.MathUtils.lerp(0.01, 0.14, easeInPow(Math.min(1, phase.p / 0.4), 1.8));
         r.ringPoints.rotation.y += spinSpeed;
@@ -1753,12 +1943,15 @@
         const lineWidth = ringRadius * 4 * spreadFactor;
         for (let i = 0; i < particleCount; i += 1) {
           const theta = r.ringInitialAngles[i];
-          // 环位置（局部坐标）
-          const ringX = Math.cos(theta) * ringRadius;
-          const ringY = (r.ringJitter[i] - 0.5) * 0.06;
-          const ringZ = Math.sin(theta) * ringRadius;
-          // 时间线位置（沿 +x 线性铺开，z 维度保留波纹）
           const lineT = theta / (Math.PI * 2);  // 0..1
+          // 先从纸页边缘沉积出来，再折成环
+          const pageX = (lineT - 0.5) * r0 * 2.7;
+          const pageY = (r.ringJitter[i] - 0.5) * r0 * 0.18;
+          const pageZ = (Math.sin(i * 0.41) * 0.5 + 0.5 - 0.5) * r0 * 0.08;
+          const ringX = THREE.MathUtils.lerp(pageX, Math.cos(theta) * ringRadius, foldPages);
+          const ringY = THREE.MathUtils.lerp(pageY, (r.ringJitter[i] - 0.5) * 0.06, foldPages);
+          const ringZ = THREE.MathUtils.lerp(pageZ, Math.sin(theta) * ringRadius, foldPages);
+          // 时间线位置（沿 +x 线性铺开，z 维度保留波纹）
           const lineX = (lineT - 0.5) * lineWidth;
           const lineY = (r.ringJitter[i] - 0.5) * 0.04;
           const noise = Math.sin(lineT * Math.PI * 6 + r.ringJitter[i] * 4) * r0 * 0.12;
@@ -1772,8 +1965,8 @@
 
         // 环 / 时间线透明度：pA 加深，pC 末稍微淡出（但保留到最后）
         const ringOp = phase.p < 0.85
-          ? 0.7 + 0.15 * easeOut3(Math.min(1, phase.p / 0.5))
-          : 0.85 * (1 - (phase.p - 0.85) / 0.15 * 0.5);
+          ? 0.42 + 0.2 * easeOut3(Math.min(1, phase.p / 0.5))
+          : 0.62 * (1 - (phase.p - 0.85) / 0.15 * 0.5);
         r.ringMaterial.opacity += (ringOp - r.ringMaterial.opacity) * 0.18;
 
         // 内核：先加速自转，pB 末开始被"时间线"拉走（沿 timelineAxis 正方向飞）
@@ -1803,6 +1996,10 @@
 
       dispose(_runtime, refs) {
         const r = _runtime as JournalEntryRuntime;
+        r.pageItems.forEach((p) => p.mesh.geometry.dispose());
+        r.pageMaterial.dispose();
+        refs.scene.remove(r.pages);
+        refs.scene.remove(r.spineLines); disposeObject3D(r.spineLines);
         refs.scene.remove(r.ringPoints);
         r.ringPoints.geometry.dispose();
         r.ringMaterial.dispose();
