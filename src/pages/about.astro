@@ -1,59 +1,208 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import StructureField from '../components/StructureField.astro';
-import { domains, pathFor } from '../lib/site';
+import { pathFor } from '../lib/site';
+import { getEntry } from 'astro:content';
 
-const domainList = Object.values(domains);
+// Fetch hand-editable profile from the content/blog directory
+const profileEntry = await getEntry('blog', 'about-profile');
+const profile = profileEntry ? profileEntry.data : {
+  motto: "一切的理解源于结构。",
+  identity: "本科工商管理在读",
+  timezone: "UTC+8 // SYS_RUNNING",
+  securityLevel: "Public Asset Level 1",
+  coordinates: ['AI 技术', '数学', '量化交易', '神经科学'],
+  interestsSummary: "AI / Math / Quant / Neuro",
+  dataMatrixSummary: "notes / projects / thoughts",
+  formatSummary: "human & AI readable"
+};
+
+// Render the markdown content
+const { Content } = profileEntry ? await profileEntry.render() : { Content: null };
+
+const projects = [
+  {
+    name: 'Alice',
+    href: 'https://github.com/ArcaneOrion/Alice',
+    description: '长期维护的 Agent 项目，用来实验记忆、工具调用和自迭代结构。',
+    tags: ['Agent', 'Memory', 'Self-Iteration']
+  },
+  {
+    name: 'spec-vc',
+    href: 'https://github.com/ArcaneOrion/spec-vc',
+    description: '围绕规格、ADR 和变更治理的版本控制实验。',
+    tags: ['Specification', 'ADR', 'Git-Flow']
+  }
+];
 ---
 
-<BaseLayout title="About — Arcane Orion">
+<BaseLayout
+  title="About — Arcane Orion"
+  description="arcane orion 的自我介绍，记录学习、思考和项目痕迹。"
+>
   <StructureField mode="self" projection />
   <a href={pathFor('/observatory')} class="return-anchor">← observatory</a>
+
   <div class="relative z-10">
-    <main class="page-shell py-16">
-      <section class="grid gap-10 py-10 lg:grid-cols-[0.82fr_1.18fr]">
-        <div>
-          <h1 class="mt-4 font-display text-5xl font-bold leading-none text-arcane-text md:text-7xl">
-            About
-          </h1>
-          <p class="mt-8 max-w-xl text-lg leading-8 text-arcane-text-secondary">
-            我是 arcane orion。这个博客记录我在学的东西和一些想法，主要围绕数学、AI 和量化。
-          </p>
-        </div>
-
-        <div class="observatory-panel p-6 md:p-8">
-          <p class="axis-label">motto</p>
-          <blockquote class="mt-5 border-l-2 border-arcane-math pl-5 font-display text-2xl leading-relaxed text-arcane-text md:text-3xl">
-            没有结构，就没有理解。
-          </blockquote>
-        </div>
-      </section>
-
-      <section class="grid gap-5 py-10 md:grid-cols-3">
-        {domainList.map(domain => (
-          <div class={`domain-${domain.id} observatory-panel p-6`}>
-            <div class="geometric-mark mb-8">
-              <span class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-xl text-domain">{domain.glyph}</span>
-            </div>
-            <p class="axis-label text-domain">{domain.label}</p>
-            <h2 class="mt-3 font-display text-xl text-arcane-text">{domain.title}</h2>
-            <p class="mt-4 font-mono text-[0.72rem] uppercase leading-6 text-arcane-text-dim">{domain.phrase}</p>
+    <main class="page-shell py-12 md:py-16">
+      <section class="mx-auto grid max-w-5xl gap-10 py-8 lg:grid-cols-[minmax(0,1fr)_19rem] lg:py-12">
+        <!-- Left Column: Biography & Philosophy -->
+        <article class="space-y-12">
+          <div class="flex items-center gap-3">
+            <span class="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+            <span class="axis-label">SYSTEM_SPEC // ABOUT ME</span>
           </div>
-        ))}
+
+          <div class="relative mt-2 inline-block">
+            <h1 class="font-display text-5xl font-extrabold tracking-tight text-arcane-text sm:text-7xl md:text-8xl">
+              arcane orion
+            </h1>
+            <div class="absolute -bottom-4 left-0 h-[1px] w-48 bg-gradient-to-r from-arcane-text/30 to-transparent"></div>
+            <div class="absolute -bottom-6 left-0 h-[1px] w-24 bg-gradient-to-r from-sky-400/50 to-transparent"></div>
+          </div>
+
+          <!-- Motto -->
+          <div class="relative pl-6 py-4 border-l-2 border-sky-400 bg-gradient-to-r from-sky-500/[0.04] to-transparent">
+            <span class="font-mono text-[0.6rem] uppercase tracking-widest text-arcane-text-dim block mb-2">[ Origin // 00 ]</span>
+            <p class="font-display text-2xl italic leading-relaxed text-arcane-text md:text-3xl">
+              “{profile.motto}”
+            </p>
+          </div>
+
+          <!-- Glassmorphism Card -->
+          <div class="relative group bg-white/40 border border-sky-200/50 hover:border-amber-200 rounded-2xl p-6 md:p-8 backdrop-blur-xl shadow-md hover:shadow-2xl hover:shadow-sky-400/[0.08] hover:-translate-y-2 transition-all duration-500 overflow-hidden">
+            <div class="absolute -right-20 -top-20 h-40 w-40 rounded-full bg-sky-300/10 blur-3xl pointer-events-none group-hover:bg-amber-300/10 transition-colors duration-500"></div>
+            <div class="absolute -left-20 -bottom-20 h-40 w-40 rounded-full bg-amber-300/10 blur-3xl pointer-events-none group-hover:bg-sky-300/10 transition-colors duration-500"></div>
+            <div class="absolute inset-0 bg-[radial-gradient(#17181c_1px,transparent_1px)] [background-size:16px_16px] opacity-[0.02] pointer-events-none"></div>
+            <div class="relative z-10 text-base leading-8 text-arcane-text-secondary md:text-lg md:leading-9 font-serif prose prose-arcane max-w-none [--tw-prose-bold:theme(colors.arcane.text)]">
+              {Content ? <Content /> : (
+                <p>我是 arcane orion，本科工商管理在读。</p>
+              )}
+            </div>
+          </div>
+        </article>
+
+        <!-- Right Column: System Metadata Sidebar -->
+        <aside class="lg:pt-24">
+          <!-- Sidebar metadata card with Float and amber-orange glow -->
+          <div class="relative group bg-white/50 border border-amber-200/50 hover:border-sky-200 hover:shadow-2xl hover:shadow-amber-500/[0.06] hover:-translate-y-1 rounded-2xl p-6 backdrop-blur-xl sticky top-24 space-y-6 transition-all duration-500 overflow-hidden">
+            <!-- Subtle glow in sidebar card -->
+            <div class="absolute -left-10 -top-10 h-24 w-24 rounded-full bg-amber-200/10 blur-2xl pointer-events-none group-hover:bg-sky-200/10 transition-colors duration-500"></div>
+
+            <div class="flex justify-between items-center border-b border-arcane-border/40 pb-4">
+              <span class="font-mono text-[0.62rem] uppercase text-arcane-text-dim tracking-widest">Metadata Panel</span>
+              <span class="font-mono text-[0.62rem] text-sky-600 flex items-center gap-1.5">
+                <span class="inline-block h-1.5 w-1.5 rounded-full bg-sky-500 animate-pulse"></span>
+                ACTIVE
+              </span>
+            </div>
+
+            <dl class="space-y-5 text-sm leading-6">
+              <div>
+                <dt class="font-mono text-[0.66rem] uppercase tracking-wider text-arcane-text-dim">主体身份</dt>
+                <dd class="mt-1 font-serif text-arcane-text-secondary font-medium">{profile.identity}</dd>
+              </div>
+              <div>
+                <dt class="font-mono text-[0.66rem] uppercase tracking-wider text-arcane-text-dim mb-2">关注坐标</dt>
+                <dd class="flex flex-wrap gap-1.5">
+                  {profile.coordinates && profile.coordinates.map(item => (
+                    <span class="inline-flex items-center gap-1 border border-sky-100 hover:border-amber-200 bg-white/70 px-2 py-1 font-mono text-[0.64rem] text-arcane-text-secondary rounded-md shadow-sm hover:shadow-md transition-all cursor-default">
+                      <span class="text-sky-400 font-bold">+</span>
+                      {item}
+                    </span>
+                  ))}
+                </dd>
+              </div>
+              <div class="border-t border-arcane-border/30 pt-4">
+                <dt class="font-mono text-[0.66rem] uppercase tracking-wider text-arcane-text-dim">运行时区</dt>
+                <dd class="mt-1 font-mono text-xs text-arcane-text-secondary">{profile.timezone}</dd>
+              </div>
+              {profile.securityLevel && (
+                <div>
+                  <dt class="font-mono text-[0.66rem] uppercase tracking-wider text-arcane-text-dim">安全等级</dt>
+                  <dd class="mt-1 font-mono text-xs text-arcane-text-secondary">{profile.securityLevel}</dd>
+                </div>
+              )}
+            </dl>
+
+            <div class="pt-4 border-t border-arcane-border/40 flex justify-center">
+              <span class="font-mono text-[0.55rem] text-arcane-text-dim tracking-tighter">|||||||||||||||||||||| 0x2A7F ||||||||||||||||||||||</span>
+            </div>
+          </div>
+        </aside>
       </section>
 
-      <section class="py-10 max-w-md">
-        <div class="observatory-panel p-6 md:p-8">
-          <p class="axis-label">contact</p>
-          <h2 class="mt-4 font-display text-2xl text-arcane-text">Arcane Orion</h2>
-          <a
-            href="https://github.com/arcaneorion"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="mt-8 inline-block border border-arcane-border px-4 py-3 font-mono text-xs uppercase text-arcane-text-secondary transition-colors hover:border-arcane-math/20 hover:text-arcane-math"
-          >
-            github / arcaneorion
-          </a>
+      <!-- Bottom Grid Matrix summaries -->
+      <div class="mx-auto max-w-5xl">
+        <div class="grid gap-4 border-t border-arcane-border/50 pt-8 sm:grid-cols-3">
+          <div class="p-5 bg-white/20 border border-sky-200/30 hover:border-sky-300 hover:bg-white/40 hover:-translate-y-1 rounded-xl transition-all duration-300">
+            <p class="font-mono text-[0.62rem] uppercase tracking-wider text-arcane-text-dim flex items-center gap-1.5">
+              <span class="h-1.5 w-1.5 rounded-full bg-sky-400 animate-pulse"></span> INTERESTS
+            </p>
+            <p class="mt-2 font-mono text-xs font-semibold text-arcane-text-secondary">{profile.interestsSummary}</p>
+          </div>
+          <div class="p-5 bg-white/20 border border-amber-200/30 hover:border-amber-300 hover:bg-white/40 hover:-translate-y-1 rounded-xl transition-all duration-300">
+            <p class="font-mono text-[0.62rem] uppercase tracking-wider text-arcane-text-dim flex items-center gap-1.5">
+              <span class="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span> DATA MATRIX
+            </p>
+            <p class="mt-2 font-mono text-xs font-semibold text-arcane-text-secondary">{profile.dataMatrixSummary}</p>
+          </div>
+          <div class="p-5 bg-white/20 border border-sky-200/30 hover:border-sky-300 hover:bg-white/40 hover:-translate-y-1 rounded-xl transition-all duration-300">
+            <p class="font-mono text-[0.62rem] uppercase tracking-wider text-arcane-text-dim flex items-center gap-1.5">
+              <span class="h-1.5 w-1.5 rounded-full bg-sky-400 animate-pulse"></span> FORMAT
+            </p>
+            <p class="mt-2 font-mono text-xs font-semibold text-arcane-text-secondary">{profile.formatSummary}</p>
+          </div>
+        </div>
+      </div>
+
+      <section class="mx-auto max-w-5xl border-t border-arcane-border/50 py-16 md:py-20 mt-12">
+        <div class="grid gap-12 lg:grid-cols-[19rem_minmax(0,1fr)]">
+          <div class="space-y-4">
+            <span class="axis-label">PROJECT MATRIX</span>
+            <h2 class="font-display text-4xl font-bold tracking-tight text-arcane-text md:text-5xl">GitHub</h2>
+            <p class="max-w-xs text-sm leading-7 text-arcane-text-secondary">
+              目前公开并持续维护的两个开源实验，探索 Agent 结构与规格治理。
+            </p>
+          </div>
+
+          <div class="space-y-4">
+            {projects.map((project, index) => (
+              <a
+                href={project.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="group block bg-white/30 border border-arcane-border/40 hover:border-arcane-neuro/40 hover:bg-white/60 p-6 md:p-8 rounded-xl transition-all duration-300 transform hover:-translate-y-1 hover:shadow-lg shadow-black/[0.01]"
+              >
+                <div class="flex flex-col md:flex-row justify-between md:items-start gap-4">
+                  <div class="space-y-3">
+                    <div class="flex items-center gap-3">
+                      <span class="font-mono text-xs text-arcane-neuro tracking-widest font-semibold">
+                        {String(index + 1).padStart(2, '0')} //
+                      </span>
+                      <p class="font-mono text-[0.62rem] uppercase tracking-widest text-arcane-text-dim">repository</p>
+                    </div>
+                    <h3 class="font-display text-3xl font-extrabold text-arcane-text group-hover:text-arcane-neuro transition-colors">
+                      {project.name}
+                    </h3>
+                    <p class="max-w-xl text-base leading-8 text-arcane-text-secondary font-serif">
+                      {project.description}
+                    </p>
+                    <div class="flex flex-wrap gap-1.5 pt-2">
+                      {project.tags.map(tag => (
+                        <span class="font-mono text-[0.6rem] uppercase tracking-wider text-arcane-text-dim bg-black/5 border border-black/[0.04] px-2 py-0.5 rounded">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <span class="flex items-center gap-1.5 self-end md:self-start font-mono text-[0.68rem] uppercase tracking-wider text-arcane-text-dim group-hover:text-arcane-text transition-colors">
+                    github ↗
+                  </span>
+                </div>
+              </a>
+            ))}
+          </div>
         </div>
       </section>
     </main>

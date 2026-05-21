@@ -34,6 +34,15 @@ export const domains = {
     tone: 'var(--color-quant)',
     darkTone: 'rgba(15, 118, 110, 0.1)',
   },
+  Journal: {
+    id: 'journal',
+    label: 'Journal',
+    title: 'Journal',
+    glyph: '∿',
+    phrase: 'note / fragment / trace',
+    tone: 'var(--color-journal)',
+    darkTone: 'rgba(176, 137, 64, 0.1)',
+  },
 } as const;
 
 export type DomainName = keyof typeof domains;

@@ -16,6 +16,7 @@
     --color-ai: #be185d;
     --color-quant: #0f766e;
     --color-neuro: #7c3aed;
+    --color-journal: #b08940;
     --color-border: #d7dde7;
     --color-line: rgba(23, 24, 28, 0.08);
     --color-danger: #d62839;
@@ -225,6 +226,11 @@
   .domain-quant {
     --domain-color: var(--color-quant);
     --domain-soft: rgba(15, 118, 110, 0.09);
+  }
+
+  .domain-journal {
+    --domain-color: var(--color-journal);
+    --domain-soft: rgba(176, 137, 64, 0.09);
   }
 
   .structure-field {
