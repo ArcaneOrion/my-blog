@@ -10,8 +10,6 @@ export const entryScene: SceneSpec = {
   anchor: { x: 0.72, y: 0.42 },
   sysInfo: {
     space: 'vector space · R²',
-    status: 'status · observing',
-    object: 'origin · 0',
   },
   copy: {
     glyph: '·',

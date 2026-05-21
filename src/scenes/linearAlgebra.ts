@@ -33,13 +33,11 @@ export const linearAlgebraScene: SceneSpec = {
   anchor: { x: 0.65, y: 0.58 },
   sysInfo: {
     space: 'space · R² → R²',
-    status: 'status · transforming',
-    object: 'object · matrix M',
   },
   copy: {
     glyph: '⊞',
     sectionLabel: 'i. linear algebra',
-    italicCopy: '给我两个方向，\n我给你一整个空间。\n矩阵把网格掰弯——\n平行线仍然平行。',
+    italicCopy: '矩阵把网格扭曲，\n平行线仍然平行。',
     sideNote: 'M ∈ R²ˣ²\ne₁ · e₂',
   },
 

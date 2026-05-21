@@ -46,13 +46,11 @@ const aiProjectionScene: SceneSpec = {
   anchor: { x: 0.52, y: 0.46 },
   sysInfo: {
     space: 'projection · latent graph → R²',
-    status: 'status · unfolding',
-    object: 'object · recursive node field',
   },
   copy: {
     glyph: 'λ',
     sectionLabel: 'projection · ai',
-    italicCopy: '递归结构压入平面，\n上下文仍保留回路。',
+    italicCopy: 'AI 节点展开。',
   },
 
   getScreenAnchor: (sctx) => ({
@@ -141,9 +139,6 @@ const aiProjectionScene: SceneSpec = {
     ctx.font = 'italic 12px "Cormorant Garamond", serif';
     ctx.fillStyle = rgba(sctx.color, 0.68);
     ctx.fillText('λ(context)', cx + 12, cy - 12);
-    ctx.font = '9px JetBrains Mono, monospace';
-    ctx.fillStyle = rgba(sctx.ink, 0.36);
-    ctx.fillText('latent graph → projection plane', cx - 70, cy + 96);
   },
 };
 
@@ -152,13 +147,11 @@ const quantProjectionScene: SceneSpec = {
   anchor: { x: 0.48, y: 0.52 },
   sysInfo: {
     space: 'projection · phase space → R²',
-    status: 'status · pricing',
-    object: 'object · signal surface',
   },
   copy: {
     glyph: 'σ',
     sectionLabel: 'projection · quant',
-    italicCopy: '相空间落成曲面，\n信号沿风险约束流动。',
+    italicCopy: 'Quant 节点展开。',
   },
 
   getScreenAnchor: (sctx) => ({
@@ -226,9 +219,6 @@ const quantProjectionScene: SceneSpec = {
     ctx.font = 'italic 12px "Cormorant Garamond", serif';
     ctx.fillStyle = rgba(sctx.color, 0.66);
     ctx.fillText('dS / S = μdt + σdW', cx + span * 0.06, cy - span * 0.17);
-    ctx.font = '9px JetBrains Mono, monospace';
-    ctx.fillStyle = rgba(sctx.ink, 0.38);
-    ctx.fillText('risk surface', cx - span * 0.35, cy + span * 0.34);
   },
 };
 

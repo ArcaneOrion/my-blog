@@ -5,36 +5,30 @@
   <div class="world-manifold__canvas" data-constellation-container></div>
 
   <header class="world-manifold__header">
-    <p class="world-manifold__eyebrow">STRUCTURE MANIFOLD // 数学结构观测场</p>
     <h1>Arcane Observatory</h1>
-    <div class="world-manifold__equation" data-equation-display>
-      Attractor Equations (Overview):<br />
-      dx/dt = σ(y - x)<br />
-      dy/dt = x(ρ - z) - y<br />
-      dz/dt = xy - βz
-    </div>
+    <div class="world-manifold__equation" data-equation-display></div>
   </header>
 
   <div class="world-manifold-label" data-constellation-label aria-live="polite"></div>
 
-  <button class="world-manifold__reset" type="button" data-reset-view>RESET VIEW</button>
+  <button class="world-manifold__reset" type="button" data-reset-view>重置</button>
 
   <aside class="world-panel" data-world-panel aria-live="polite">
-    <p class="world-panel__index" data-world-index>NULL SET</p>
-    <h2 data-world-title>VOID</h2>
+    <p class="world-panel__index" data-world-index></p>
+    <h2 data-world-title></h2>
     <p class="world-panel__glyph" data-world-glyph>∅</p>
-    <p class="world-panel__body" data-world-body>Choose a manifold node to unfold one projection field.</p>
+    <p class="world-panel__body" data-world-body>点击节点查看</p>
     <dl class="world-panel__meta">
       <div>
-        <dt>space</dt>
-        <dd data-world-space>∅</dd>
+        <dt>主题</dt>
+        <dd data-world-space>—</dd>
       </div>
       <div>
-        <dt>state</dt>
-        <dd data-world-state>unobserved</dd>
+        <dt>状态</dt>
+        <dd data-world-state>未选择</dd>
       </div>
     </dl>
-    <button class="world-panel__enter" type="button" data-enter-world>ENTER FIELD</button>
+    <button class="world-panel__enter" type="button" data-enter-world>进入</button>
   </aside>
 </div>
 
@@ -163,13 +157,9 @@
     const worldStateEl = worldStateMaybe;
 
     const sysStateEl = document.querySelector('[data-sys-state]');
-    const sysStatusEl = document.querySelector('[data-sys-status]');
-    const sysObjectEl = document.querySelector('[data-sys-object]');
 
     const updateSysInfo = (state: string, status: string, obj: string) => {
       if (sysStateEl) sysStateEl.textContent = `state · ${state}`;
-      if (sysStatusEl) sysStatusEl.textContent = `status · ${status}`;
-      if (sysObjectEl) sysObjectEl.textContent = `object · ${obj}`;
     };
 
     let width = container.clientWidth || window.innerWidth;
@@ -2116,9 +2106,9 @@
       {
         id: 'math',
         label: 'Mathematics',
-        title: 'DIMENSION A // 数学结构',
+        title: 'Math · 数学',
         sub: 'proof · abstraction · invariant',
-        content: '这里是关于证明、分析、拓扑与抽象结构的投影场。数学不是装饰符号，而是观察时保留下来的不变量。',
+        content: '这里记录我学数学的笔记和想法。',
         glyph: '∂',
         color: palette.math,
         colorTuple: paletteTuple.math,
@@ -2132,9 +2122,9 @@
       {
         id: 'ai',
         label: 'Artificial Intelligence',
-        title: 'DIMENSION B // 递归智能',
+        title: 'AI',
         sub: 'agency · context · optimization',
-        content: '这里记录 agent、上下文工程、自我迭代与智能系统。节点像一个会回看自身状态的递归核心。',
+        content: '这里记录 AI、agent 相关的学习经历以及一些对 AI 的想法。',
         glyph: 'λ',
         color: palette.ai,
         colorTuple: paletteTuple.ai,
@@ -2148,9 +2138,9 @@
       {
         id: 'quant',
         label: 'Quantitative Thinking',
-        title: 'DIMENSION C // 市场相空间',
+        title: 'Quant · 量化',
         sub: 'signal · risk · feedback',
-        content: '这里承载量化思维、动量、风险曲面与反馈系统。价格不是点，而是噪声、信号和约束共同生成的轨迹。',
+        content: '这里记录量化交易、投资和市场观察的笔记。',
         glyph: 'σ',
         color: palette.quant,
         colorTuple: paletteTuple.quant,
@@ -2164,9 +2154,9 @@
       {
         id: 'self',
         label: 'Self',
-        title: 'DIMENSION D // 观测者原点',
+        title: 'Self · 关于我',
         sub: 'observer · origin · profile',
-        content: '这里不是履历页，而是坐标系的原点：谁在观察、以什么方式学习、用什么问题组织自己的结构路径。',
+        content: '关于我：在学什么、想什么、怎么思考。',
         glyph: '·',
         color: palette.self,
         colorTuple: paletteTuple.self,
@@ -2180,9 +2170,9 @@
       {
         id: 'journal',
         label: 'Journal',
-        title: 'DIMENSION E // 漂移日志',
+        title: 'Journal · 日志',
         sub: 'drift · note · state',
-        content: '这里保存阶段性笔记、状态切片与未完成的观察。它不像文章那样闭合，更像仍在运动的时间环。',
+        content: '临时想法、短记录、还没写成文章的东西。',
         glyph: '∿',
         color: palette.journal,
         colorTuple: paletteTuple.journal,

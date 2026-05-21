@@ -75,16 +75,12 @@ export const probabilityScene: SceneSpec = {
   anchor: { x: 0.32, y: 0.55 },
   sysInfo: {
     space: 'sample · X ~ P',
-    status: 'status · sampling',
-    object: 'object · trajectories',
   },
   copy: {
     glyph: '∝',
     sectionLabel: 'iii. probability',
-    italicCopy: `每一步是一次抽样，
-看不见的分布在背后——
-期望存在，
-但每条路径都偏离它。`,
+    italicCopy: `随机游走：每一步是高斯抽样，
+路径偏离期望值。`,
     sideNote: `X ~ N(μ, σ²)
 E[X], Var[X]`,
   },

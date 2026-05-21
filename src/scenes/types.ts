@@ -36,8 +36,6 @@ export interface SceneAnchor {
 
 export interface SysInfoLines {
   space: string;
-  status: string;
-  object: string;
 }
 
 export interface SceneCopy {

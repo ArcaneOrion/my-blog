@@ -37,13 +37,11 @@ export const analysisScene: SceneSpec = {
   anchor: { x: 0.48, y: 0.42 },
   sysInfo: {
     space: 'projection · S² → R²',
-    status: 'status · resolving',
-    object: 'object · orion · ODE',
   },
   copy: {
     glyph: '∮',
     sectionLabel: 'ii. analysis',
-    italicCopy: 'S² 上的猎户，\n落在平面上仍是猎户——\n每颗星沿轨迹运行，\n微分方程让结构连续。',
+    italicCopy: '球面上的猎户，\n投影到平面仍是猎户。',
     sideNote: 'α · β · γ · δ\nε · ζ · κ · λ',
   },
 

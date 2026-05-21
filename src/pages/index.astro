@@ -24,8 +24,6 @@ const narrativeAlign: Record<string, 'left' | 'right' | 'center-bottom' | 'cente
 
   <aside class="sys-info" data-sys-info aria-hidden="true">
     <p data-sys-line="space">{heroScene.sysInfo.space}</p>
-    <p data-sys-line="status">{heroScene.sysInfo.status}</p>
-    <p data-sys-line="object" class="text-arcane-text-dim/60">{heroScene.sysInfo.object}</p>
   </aside>
 
   {/* Narrative 层：诗句独立浮层，由 canvas scene 几何锚点驱动 (gateway 不走 narrative,改用 HTML hero) */}
@@ -51,8 +49,6 @@ const narrativeAlign: Record<string, 'left' | 'right' | 'center-bottom' | 'cente
         data-stage={heroScene.id}
       >
         <div class="hero-frame">
-          <p class="hero-meta">mathematics · structure · mystery</p>
-
           <h1
             class="hero-name narrative-hero"
             data-narrative-scene="entry"
@@ -65,7 +61,7 @@ const narrativeAlign: Record<string, 'left' | 'right' | 'center-bottom' | 'cente
             class="hero-coord narrative-hero"
             data-narrative-scene="entry"
           >
-            <span class="hero-coord-arrow">↳</span>origin · (0, 0) · observer of structure
+            <span class="hero-coord-arrow">↳</span>(0, 0)
           </p>
 
           <p
@@ -87,7 +83,6 @@ const narrativeAlign: Record<string, 'left' | 'right' | 'center-bottom' | 'cente
               data-stage={scene.id}
             >
               <div class="portal-hero">
-                <p class="portal-label">portal</p>
                 <h2
                   class="portal-title narrative-hero"
                   data-narrative-scene="gateway"
@@ -95,7 +90,6 @@ const narrativeAlign: Record<string, 'left' | 'right' | 'center-bottom' | 'cente
                 >
                   推开一扇门<br/><span class="portal-title-em">进入世界</span>
                 </h2>
-                <p class="portal-sub">press · the · ring · to · cross</p>
               </div>
             </section>
           );

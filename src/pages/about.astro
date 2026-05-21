@@ -4,13 +4,6 @@ import StructureField from '../components/StructureField.astro';
 import { domains, pathFor } from '../lib/site';
 
 const domainList = Object.values(domains);
-
-const principles = [
-  ['01', 'Structure before explanation'],
-  ['02', 'Agency as an engineering object'],
-  ['03', 'Markets as feedback machines'],
-  ['04', 'Understanding through invariants'],
-];
 ---
 
 <BaseLayout title="About — Arcane Orion">
@@ -20,12 +13,11 @@ const principles = [
     <main class="page-shell py-16">
       <section class="grid gap-10 py-10 lg:grid-cols-[0.82fr_1.18fr]">
         <div>
-          <p class="axis-label">system profile</p>
           <h1 class="mt-4 font-display text-5xl font-bold leading-none text-arcane-text md:text-7xl">
             About
           </h1>
           <p class="mt-8 max-w-xl text-lg leading-8 text-arcane-text-secondary">
-            我是 arcane / arcane orion。这个博客记录我如何用数学、AI、量化三种结构语言，观察智能、市场和系统演化。
+            我是 arcane orion。这个博客记录我在学的东西和一些想法，主要围绕数学、AI 和量化。
           </p>
         </div>
 
@@ -34,9 +26,6 @@ const principles = [
           <blockquote class="mt-5 border-l-2 border-arcane-math pl-5 font-display text-2xl leading-relaxed text-arcane-text md:text-3xl">
             没有结构，就没有理解。
           </blockquote>
-          <p class="mt-6 leading-8 text-arcane-text-secondary">
-            这里的设计目标不是装饰数学符号，而是让界面本身像一套可交互的结构系统：坐标、图网络、轨迹、噪声和观测记录共同组成表达。
-          </p>
         </div>
       </section>
 
@@ -53,25 +42,10 @@ const principles = [
         ))}
       </section>
 
-      <section class="grid gap-6 py-10 lg:grid-cols-[1fr_1fr]">
-        <div class="observatory-panel p-6 md:p-8">
-          <p class="axis-label">operating principles</p>
-          <div class="mt-6 grid gap-3">
-            {principles.map(([number, text]) => (
-              <div class="grid grid-cols-[auto_1fr] items-center gap-4 border border-arcane-border bg-white p-4">
-                <span class="font-mono text-xs text-arcane-text-dim">{number}</span>
-                <span class="font-display text-arcane-text">{text}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
+      <section class="py-10 max-w-md">
         <div class="observatory-panel p-6 md:p-8">
           <p class="axis-label">contact</p>
           <h2 class="mt-4 font-display text-2xl text-arcane-text">Arcane Orion</h2>
-          <p class="mt-4 leading-8 text-arcane-text-secondary">
-            当前阶段重点是学习、构建和记录。博客先作为思想结构的外部化界面，后续再加入更多交互图谱和神经科学主题。
-          </p>
           <a
             href="https://github.com/arcaneorion"
             target="_blank"

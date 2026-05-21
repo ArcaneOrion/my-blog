@@ -42,15 +42,12 @@ export const gatewayScene: SceneSpec = {
   id: 'gateway',
   anchor: { x: 0.5, y: 0.5 },
   sysInfo: {
-    space: 'state · convergent',
-    status: 'status · ready',
-    object: 'object · portal',
+    space: '',
   },
   copy: {
     glyph: '○',
-    // 去掉 "iv." 编号——脱离 i/ii/iii 数学序列,作为独立的"入口"终点
-    sectionLabel: 'portal',
-    italicCopy: '五个结构域，\n各自投影。\n\n推门进入。',
+    sectionLabel: '',
+    italicCopy: '推门进入。',
     sideNote: 'ai · math · quant\nself · journal',
   },
 
@@ -233,26 +230,6 @@ export const gatewayScene: SceneSpec = {
   },
 
   annotate: (ctx, points, sctx) => {
-    const { color, ink } = sctx;
-    const { cx, cy, radius } = anchorCenter(sctx);
-    const hover = hoverFactor(sctx);
-    const dynRadius = radius * (1 + hover * 0.35);
-
-    // "portal · 5" 在圆环下方
-    ctx.font = 'italic 14px "Cormorant Garamond", serif';
-    ctx.fillStyle = rgba(ink, 0.58 + hover * 0.3);
-    ctx.textAlign = 'center';
-    ctx.fillText('portal', cx, cy + dynRadius + 32);
-
-    ctx.font = '9px JetBrains Mono, monospace';
-    ctx.fillStyle = rgba(ink, 0.35 + hover * 0.3);
-    ctx.fillText('5 · spaces · ahead', cx, cy + dynRadius + 50);
-
-    if (hover > 0.3) {
-      ctx.font = '9px JetBrains Mono, monospace';
-      ctx.fillStyle = rgba(color, hover * 0.7);
-      ctx.fillText('press · to · cross', cx, cy + dynRadius + 68);
-    }
-    ctx.textAlign = 'start';
+    // 装饰文字已移除
   },
 };
