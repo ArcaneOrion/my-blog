@@ -2871,6 +2871,13 @@
       linear-gradient(90deg, rgba(252, 252, 253, 0.62), transparent 24%, transparent 76%, rgba(252, 252, 253, 0.72));
   }
 
+  /* 窄屏 canvas 整块就那么大,vignette 几乎盖满,会显得整体灰白蒙一层 */
+  @media (max-width: 700px) {
+    .world-manifold::after {
+      display: none;
+    }
+  }
+
   .world-manifold__header {
     position: fixed;
     top: clamp(1.7rem, 5vh, 3rem);
