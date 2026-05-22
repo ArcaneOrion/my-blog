@@ -166,8 +166,8 @@
     let height = container.clientHeight || window.innerHeight;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xfcfcfd);
-    scene.fog = new THREE.FogExp2(0xfcfcfd, 0.024);
+    scene.background = new THREE.Color(0xfbfaf7);
+    scene.fog = new THREE.FogExp2(0xfbfaf7, 0.018);
 
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
     const defaultCameraPos = new THREE.Vector3(0, 13, 32);
@@ -187,27 +187,18 @@
     dirLight.position.set(10, 28, 14);
     scene.add(dirLight);
 
+    // gridGroup 保留为空 group:render loop 还会 lerp 它的 scale (ENTERING 动画引用),
+    // 但不再放 3 层 wireframe 球面 —— 那是装饰的装饰,不承载意义,删掉减少视觉噪音
     const gridGroup = new THREE.Group();
-    const gridMat = new THREE.MeshBasicMaterial({
-      color: 0xdadce5,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.28,
-      depthWrite: false,
-    });
-    [10, 18, 27].forEach((radius) => {
-      const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius, 24, 16), gridMat.clone());
-      gridGroup.add(sphere);
-    });
     scene.add(gridGroup);
 
     const lorenzParams = { sigma: 10, rho: 28, beta: 8 / 3, speedScale: 1 };
     const lorenzTargets = { sigma: 10, rho: 28, beta: 8 / 3, speedScale: 1 };
     const lorenzGeometry = new THREE.BufferGeometry();
     const lorenzMaterial = new THREE.LineBasicMaterial({
-      color: 0xcca050,
+      color: 0x8b6f2e,
       transparent: true,
-      opacity: 0.44,
+      opacity: 0.45,
     });
     const lorenzLine = new THREE.Line(lorenzGeometry, lorenzMaterial);
     scene.add(lorenzLine);
@@ -2324,7 +2315,7 @@
       geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
       const line = new THREE.Line(
         geom,
-        new THREE.LineBasicMaterial({ color: 0x17181c, transparent: true, opacity: 0.07 }),
+        new THREE.LineBasicMaterial({ color: 0x17181c, transparent: true, opacity: 0 }),
       );
       linesGroup.add(line);
       return { line, fromId, toId };
@@ -2354,7 +2345,7 @@
           mat.opacity += (0.34 - mat.opacity) * 0.12;
         } else {
           mat.color.setHex(0x17181c);
-          mat.opacity += (0.07 - mat.opacity) * 0.12;
+          mat.opacity += (0 - mat.opacity) * 0.12;
         }
       });
     }
@@ -2707,15 +2698,15 @@
         });
 
         if (systemState !== 'ENTERING') {
-          const targetScale = isFocused ? 1.22 : isHovered ? 1.14 : 1;
+          const targetScale = isFocused ? 1.32 : isHovered ? 1.2 : 1.12;
           world.group.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.12);
 
-          const targetOpacity = isFocused ? 0.56 : isHovered ? 0.48 : 0.18;
+          const targetOpacity = isFocused ? 0.82 : isHovered ? 0.7 : 0.58;
           const mat = world.coreMesh.material as THREE.MeshBasicMaterial | THREE.PointsMaterial;
           mat.opacity += (targetOpacity - mat.opacity) * 0.12;
           world.outerStructures.forEach((struct) => {
             const material = (struct as THREE.Mesh | THREE.Points).material as THREE.MeshBasicMaterial | THREE.PointsMaterial | undefined;
-            if (material) material.opacity += ((isFocused || isHovered ? 0.52 : 0.18) - material.opacity) * 0.12;
+            if (material) material.opacity += ((isFocused || isHovered ? 0.7 : 0.5) - material.opacity) * 0.12;
           });
         }
       });
@@ -2744,7 +2735,7 @@
             if (isFocus) return;
             const s = Math.max(0.18, 1 - easeOut3(pA) * 0.75);
             item.group.scale.lerp(new THREE.Vector3(s, s, s), 0.18);
-            const op = Math.max(0, 0.18 * (1 - pA * 1.15));
+            const op = Math.max(0, 0.58 * (1 - pA * 1.15));
             const mat = item.coreMesh.material as THREE.MeshBasicMaterial | THREE.PointsMaterial;
             mat.opacity += (op - mat.opacity) * 0.2;
             item.outerStructures.forEach((struct) => {
@@ -2753,7 +2744,7 @@
             });
           });
 
-          (lorenzMaterial as THREE.LineBasicMaterial).opacity = Math.max(0, 0.44 * (1 - pA * 1.2));
+          (lorenzMaterial as THREE.LineBasicMaterial).opacity = Math.max(0, 0.45 * (1 - pA * 1.2));
           gridGroup.scale.lerp(new THREE.Vector3(0.45, 0.45, 0.45), 0.05);
           connectionLines.forEach(({ line }) => {
             const mat = line.material as THREE.LineBasicMaterial;
@@ -2775,7 +2766,7 @@
         camera.fov += (50 - camera.fov) * 0.05;
         camera.updateProjectionMatrix();
         lorenzLine.scale.lerp(new THREE.Vector3(1, 1, 1), 0.06);
-        (lorenzMaterial as THREE.LineBasicMaterial).opacity += (0.44 - (lorenzMaterial as THREE.LineBasicMaterial).opacity) * 0.06;
+        (lorenzMaterial as THREE.LineBasicMaterial).opacity += (0.45 - (lorenzMaterial as THREE.LineBasicMaterial).opacity) * 0.06;
         updateOrbitCameraTarget(focusedNode ? focusedNode.position : new THREE.Vector3(0, 0, 0));
       }
 
@@ -2846,7 +2837,7 @@
     inset: 0;
     z-index: 0;
     overflow: hidden;
-    background: #fcfcfd;
+    background: #fbfaf7;
     color: #1a1a1e;
     font-family: var(--font-mono);
     opacity: 0;
@@ -2866,9 +2857,8 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background:
-      radial-gradient(circle at 50% 46%, transparent 46%, rgba(252, 252, 253, 0.44) 100%),
-      linear-gradient(90deg, rgba(252, 252, 253, 0.62), transparent 24%, transparent 76%, rgba(252, 252, 253, 0.72));
+    /* 底色已经是有质感的浅冷灰,不再叠中央通透的米白 vignette(会显得脏) */
+    display: none;
   }
 
   /* 窄屏 canvas 整块就那么大,vignette 几乎盖满,会显得整体灰白蒙一层 */
