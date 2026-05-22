@@ -256,8 +256,11 @@
       phi: Math.acos(defaultCameraPos.y / defaultCameraPos.length()),
       radius: defaultCameraPos.length(),
     };
+    // 窄屏 portrait 视口（≤700px）水平 FOV 太窄，五个 worldNode 会被裁出；
+    // 把 overview 相机沿径向拉远，让 x=±10 节点留出余量。focused 模式已在 focusNode 内自行处理。
+    const viewRadiusScale = () => (window.innerWidth <= 700 ? 1.45 : 1);
     const orbit = { ...defaultOrbit };
-    const orbitTarget = { ...defaultOrbit };
+    const orbitTarget = { ...defaultOrbit, radius: defaultOrbit.radius * viewRadiusScale() };
     const enteringStartCamera = new THREE.Vector3();
     const enteringStartLookAt = new THREE.Vector3();
 
@@ -2437,7 +2440,7 @@
       lorenzTargets.speedScale = 1;
       orbitTarget.theta = defaultOrbit.theta;
       orbitTarget.phi = defaultOrbit.phi;
-      orbitTarget.radius = defaultOrbit.radius;
+      orbitTarget.radius = defaultOrbit.radius * viewRadiusScale();
       targetLookAt.set(0, 0, 0);
       equationEl.innerHTML = `
         Attractor Equations (Overview):<br />
@@ -2559,7 +2562,7 @@
       if (systemState === 'ENTERING') return;
       event.preventDefault();
       const minRadius = focusedNode ? 5.2 : 18;
-      const maxRadius = focusedNode ? 15 : 46;
+      const maxRadius = focusedNode ? 15 : 46 * viewRadiusScale();
       orbitTarget.radius = Math.max(minRadius, Math.min(maxRadius, orbitTarget.radius + event.deltaY * 0.018));
     }
 
@@ -2569,14 +2572,6 @@
       isDraggingView = false;
       container.style.cursor = 'grab';
       updateSysInfo('five nodes', 'waiting', 'manifold');
-    }
-
-    function onTouchTap(event: MouseEvent) {
-      if (systemState !== 'OVERVIEW') return;
-      const target = event.target as Element;
-      if (target.closest('button') || target.closest('.world-panel')) return;
-      updateHover(event.clientX, event.clientY);
-      if (hoveredNode) focusNode(hoveredNode);
     }
 
     function onVisibility() {
@@ -2717,16 +2712,11 @@
     resetBtn.addEventListener('click', resetView);
     enterBtn.addEventListener('click', enterWorld);
     window.addEventListener('resize', onResize);
-    const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
-    if (isCoarsePointer) {
-      container.addEventListener('click', onTouchTap);
-    } else {
-      window.addEventListener('pointermove', onPointerMove);
-      container.addEventListener('pointerdown', onPointerDown);
-      window.addEventListener('pointerup', onPointerUp);
-      window.addEventListener('pointerleave', onPointerLeave);
-      container.addEventListener('wheel', onWheel, { passive: false });
-    }
+    window.addEventListener('pointermove', onPointerMove);
+    container.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointerleave', onPointerLeave);
+    container.addEventListener('wheel', onWheel, { passive: false });
     document.addEventListener('visibilitychange', onVisibility);
 
     container.style.cursor = 'grab';
@@ -2742,15 +2732,11 @@
       resetBtn.removeEventListener('click', resetView);
       enterBtn.removeEventListener('click', enterWorld);
       window.removeEventListener('resize', onResize);
-      if (isCoarsePointer) {
-        container.removeEventListener('click', onTouchTap);
-      } else {
-        window.removeEventListener('pointermove', onPointerMove);
-        container.removeEventListener('pointerdown', onPointerDown);
-        window.removeEventListener('pointerup', onPointerUp);
-        window.removeEventListener('pointerleave', onPointerLeave);
-        container.removeEventListener('wheel', onWheel);
-      }
+      window.removeEventListener('pointermove', onPointerMove);
+      container.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointerleave', onPointerLeave);
+      container.removeEventListener('wheel', onWheel);
       document.removeEventListener('visibilitychange', onVisibility);
       if (activeEntry && focusedNode) {
         const w = worlds.find((item) => item.data.id === focusedNode!.id);
@@ -2788,6 +2774,7 @@
     inset: 0;
     width: 100%;
     height: 100%;
+    touch-action: none;
   }
 
   .world-manifold::after {
