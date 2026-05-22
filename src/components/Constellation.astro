@@ -234,6 +234,7 @@
     const mouse = new THREE.Vector2();
     let hoveredNode: NodeData | null = null;
     let focusedNode: NodeData | null = null;
+    let tappedNodeAtDown: NodeData | null = null;
     let systemState: SystemState = 'OVERVIEW';
     let transitionProgress = 0;
     let paused = false;
@@ -2563,6 +2564,13 @@
         dragDistance = 0;
         isDraggingView = systemState !== 'ENTERING';
         container.style.cursor = 'grabbing';
+        // 触屏没 hover,在按下瞬间立刻 raycast,记下候选节点供 up 时 tap 用
+        if (systemState === 'OVERVIEW') {
+          updateHover(event.clientX, event.clientY);
+          tappedNodeAtDown = hoveredNode;
+        } else {
+          tappedNodeAtDown = null;
+        }
       } else if (pointerMap.size === 2) {
         // 进入双指 pinch:停止 orbit,记录初始两指距离与 radius 作为缩放基准
         const pts = Array.from(pointerMap.values());
@@ -2583,6 +2591,7 @@
         pointerLastX = remaining.x;
         pointerLastY = remaining.y;
         pinchStartDist = 0;
+        tappedNodeAtDown = null;
         return;
       }
 
@@ -2596,18 +2605,28 @@
 
       if (wasPinching) {
         pinchStartDist = 0;
+        tappedNodeAtDown = null;
         return;
       }
 
-      if (systemState !== 'OVERVIEW' || !hoveredNode) return;
-      if ((event.target as Element).closest('button') || (event.target as Element).closest('.world-panel')) return;
-      const deltaX = Math.abs(event.clientX - pointerStartX);
-      const deltaY = Math.abs(event.clientY - pointerStartY);
-      if (deltaX > 8 || deltaY > 8 || dragDistance > 14) {
-        updateHover(event.clientX, event.clientY);
+      if ((event.target as Element).closest('button') || (event.target as Element).closest('.world-panel')) {
+        tappedNodeAtDown = null;
         return;
       }
-      focusNode(hoveredNode);
+
+      // tap 判定:位移在阈值内 → 用按下时记下的候选节点(单指 tap 通道)
+      const deltaX = Math.abs(event.clientX - pointerStartX);
+      const deltaY = Math.abs(event.clientY - pointerStartY);
+      const isTap = deltaX <= 8 && deltaY <= 8 && dragDistance <= 14;
+      const target = isTap ? (tappedNodeAtDown || hoveredNode) : null;
+      tappedNodeAtDown = null;
+
+      if (systemState !== 'OVERVIEW') return;
+      if (!target) {
+        if (!isTap) updateHover(event.clientX, event.clientY);
+        return;
+      }
+      focusNode(target);
     }
 
     function onPointerCancel(event: PointerEvent) {
@@ -2616,6 +2635,7 @@
       if (pointerMap.size < 2) pinchStartDist = 0;
       if (pointerMap.size === 0) {
         isDraggingView = false;
+        tappedNodeAtDown = null;
         container.style.cursor = hoveredNode ? 'pointer' : 'grab';
       }
     }
