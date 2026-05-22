@@ -1744,20 +1744,19 @@
     //                    镜头从俯视位置侧滑到沿 +x 方向的"擦地视角"，
     //                    内核被时间线"拉走"——也跟着 +x 飞出
 
-    interface JournalShard {
-      mesh: THREE.Mesh;
-      normal: THREE.Vector3;
-      center: THREE.Vector3;
-    }
-
     interface JournalEntryRuntime {
       ringPoints: THREE.Points;
       ringMaterial: THREE.PointsMaterial;
       ringPositions: Float32Array;
       ringInitialAngles: Float32Array;
       ringJitter: Float32Array;
-      shards: THREE.Group;
-      shardItems: JournalShard[];
+      
+      vertexMarkers: THREE.Mesh[];
+      vertexPositions: THREE.Vector3[];
+      
+      singularity: THREE.Mesh;
+      singularityHalo: THREE.Mesh;
+      
       core: THREE.Mesh;
       targetQuat: THREE.Quaternion;
       enterAxis: THREE.Vector3;
@@ -1780,7 +1779,8 @@
         if (originalPoints) originalPoints.visible = false;
         if (originalCore) originalCore.visible = false;
 
-        const particleCount = 56; // 100% 对齐原本常态下的 56 颗粒子
+        // 1. 三组正交金色星轨，共 108 颗粒子
+        const particleCount = 108;
         const positions = new Float32Array(particleCount * 3);
         const initialAngles = new Float32Array(particleCount);
         const jitter = new Float32Array(particleCount);
@@ -1789,34 +1789,35 @@
         let origCount = 0;
         if (originalPoints && originalPoints.geometry.attributes.position) {
           origArray = originalPoints.geometry.attributes.position.array as Float32Array;
-          origCount = Math.min(56, originalPoints.geometry.attributes.position.count);
+          origCount = originalPoints.geometry.attributes.position.count;
         }
 
         const ringRadius = r0 * 1.25;
         for (let i = 0; i < particleCount; i += 1) {
           jitter[i] = (Math.sin(i * 17.3) * 0.5 + 0.5); // 伪随机
-          const theta = (i / particleCount) * Math.PI * 2;
-          initialAngles[i] = theta;
-
-          if (i < origCount && origArray) {
-            // 前 56 颗完全对齐常态粒子的实时坐标
-            positions[i * 3 + 0] = origArray[i * 3 + 0];
-            positions[i * 3 + 1] = origArray[i * 3 + 1];
-            positions[i * 3 + 2] = origArray[i * 3 + 2];
+          // 在 build 瞬间，为了做到 100% 无缝重合，108颗粒子的本地坐标全对齐常态环当前的粒子位置
+          if (origCount > 0 && origArray) {
+            const idx = (i % origCount) * 3;
+            positions[i * 3 + 0] = origArray[idx + 0];
+            positions[i * 3 + 1] = origArray[idx + 1];
+            positions[i * 3 + 2] = origArray[idx + 2];
           } else {
+            const theta = (i / particleCount) * Math.PI * 2;
             positions[i * 3 + 0] = Math.cos(theta) * ringRadius;
             positions[i * 3 + 1] = 0;
             positions[i * 3 + 2] = Math.sin(theta) * ringRadius;
           }
+          // 每 36 颗构成一组轨道角
+          initialAngles[i] = ((i % 36) / 36) * Math.PI * 2;
         }
 
         const geom = new THREE.BufferGeometry();
         geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         const ringMaterial = new THREE.PointsMaterial({
           color: node.color,
-          size: 0.05,
+          size: 0.052,
           transparent: true,
-          opacity: 0.48, // 与常态无缝对接
+          opacity: 0.48, // 与常态完全对齐
           depthWrite: false,
         });
 
@@ -1831,68 +1832,78 @@
         ringPoints.userData = { initialQuat };
         sc.add(ringPoints);
 
-        // 碎裂八面体（shards）：提取原本 coreMesh 的 8 个三角形，供之后向四周爆开飞散
-        const octGeom = new THREE.OctahedronGeometry(r0 * 0.5, 0);
-        const shards = new THREE.Group();
-        shards.position.copy(worldCenter);
-        if (originalCore) {
-          shards.rotation.copy(originalCore.rotation);
-        }
-        sc.add(shards);
+        // 2. 八面体的 6 个高亮顶点，用于向中心塌缩
+        const octVerts = [
+          new THREE.Vector3(1, 0, 0),
+          new THREE.Vector3(-1, 0, 0),
+          new THREE.Vector3(0, 1, 0),
+          new THREE.Vector3(0, -1, 0),
+          new THREE.Vector3(0, 0, 1),
+          new THREE.Vector3(0, 0, -1),
+        ].map((v) => v.multiplyScalar(r0 * 0.5));
 
-        const shardItems: JournalShard[] = [];
-        const posAttr = octGeom.attributes.position as THREE.BufferAttribute;
-        const index = octGeom.index;
-        const triCount = index ? index.count / 3 : posAttr.count / 3;
-
-        // 八面体碎片的材质
-        const shardMaterial = new THREE.MeshBasicMaterial({
+        const vertexMarkerMat = new THREE.MeshBasicMaterial({
           color: node.color,
-          side: THREE.DoubleSide,
           transparent: true,
-          opacity: 0.26,
-          wireframe: true, // 保持 wireframe 线框以呼应常态 coreMesh
+          opacity: 0.85,
           depthWrite: false,
         });
+        const vertexMarkers = octVerts.map((v) => {
+          const mesh = new THREE.Mesh(
+            new THREE.SphereGeometry(r0 * 0.065, 12, 8),
+            vertexMarkerMat,
+          );
+          mesh.position.copy(worldCenter).add(v);
+          if (originalCore) {
+            // 让高亮小球和原核心的旋转对齐
+            mesh.position.sub(worldCenter).applyQuaternion(originalCore.quaternion).add(worldCenter);
+          }
+          sc.add(mesh);
+          return mesh;
+        });
 
-        for (let t = 0; t < triCount; t += 1) {
-          const i0 = index ? index.getX(t * 3 + 0) : t * 3 + 0;
-          const i1 = index ? index.getX(t * 3 + 1) : t * 3 + 1;
-          const i2 = index ? index.getX(t * 3 + 2) : t * 3 + 2;
-          const v0 = new THREE.Vector3(posAttr.getX(i0), posAttr.getY(i0), posAttr.getZ(i0));
-          const v1 = new THREE.Vector3(posAttr.getX(i1), posAttr.getY(i1), posAttr.getZ(i1));
-          const v2 = new THREE.Vector3(posAttr.getX(i2), posAttr.getY(i2), posAttr.getZ(i2));
-          const center = new THREE.Vector3().addVectors(v0, v1).add(v2).multiplyScalar(1 / 3);
+        // 3. 奇点光球 + 辉光圈
+        const singularity = new THREE.Mesh(
+          new THREE.SphereGeometry(r0 * 0.11, 16, 12),
+          new THREE.MeshBasicMaterial({
+            color: node.color,
+            transparent: true,
+            opacity: 0,
+            depthWrite: false,
+          }),
+        );
+        singularity.position.copy(worldCenter);
+        sc.add(singularity);
 
-          const local0 = v0.clone().sub(center);
-          const local1 = v1.clone().sub(center);
-          const local2 = v2.clone().sub(center);
+        const singularityHalo = new THREE.Mesh(
+          new THREE.RingGeometry(r0 * 0.16, r0 * 0.22, 48),
+          new THREE.MeshBasicMaterial({
+            color: node.color,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0,
+            depthWrite: false,
+          }),
+        );
+        singularityHalo.position.copy(worldCenter);
+        singularityHalo.lookAt(cam.position);
+        sc.add(singularityHalo);
 
-          const triGeom = new THREE.BufferGeometry();
-          triGeom.setAttribute('position', new THREE.Float32BufferAttribute([
-            local0.x, local0.y, local0.z,
-            local1.x, local1.y, local1.z,
-            local2.x, local2.y, local2.z,
-          ], 3));
-          triGeom.setIndex([0, 1, 2]);
-          triGeom.computeVertexNormals();
-
-          const mesh = new THREE.Mesh(triGeom, shardMaterial);
-          mesh.position.copy(center);
-          shards.add(mesh);
-          shardItems.push({
-            mesh,
-            normal: center.clone().normalize(),
-            center: center.clone(),
-          });
-        }
-
-        // 创建临时核心 Mesh（占位但实际上会被 shards 接管）
+        // 4. 接管原本核心八面体
         const core = new THREE.Mesh(
-          new THREE.OctahedronGeometry(r0 * 0.01, 0),
-          new THREE.MeshBasicMaterial({ visible: false }),
+          new THREE.OctahedronGeometry(r0 * 0.5, 0),
+          new THREE.MeshBasicMaterial({
+            color: node.color,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.26,
+            depthWrite: false,
+          }),
         );
         core.position.copy(worldCenter);
+        if (originalCore) {
+          core.rotation.copy(originalCore.rotation);
+        }
         sc.add(core);
 
         return {
@@ -1901,8 +1912,10 @@
           ringPositions: positions,
           ringInitialAngles: initialAngles,
           ringJitter: jitter,
-          shards,
-          shardItems,
+          vertexMarkers,
+          vertexPositions: octVerts,
+          singularity,
+          singularityHalo,
           core,
           targetQuat: initialQuat,
           enterAxis,
@@ -1916,13 +1929,13 @@
         const { camera: cam, cameraTarget: ct, targetCameraPos: tcp, targetLookAt: tla } = refs;
         const r0 = refs.node.planetSize;
 
-        const targetFov = 50 + 16 * easeInOut3(Math.min(1, phase.p / 0.85));
+        const targetFov = 50 + 12 * easeInOut3(Math.min(1, phase.p / 0.85));
         cam.fov += (targetFov - cam.fov) * 0.18;
         cam.updateProjectionMatrix();
 
         const startDist = refs.enteringStartCamera.distanceTo(r.worldCenter);
-        // 穿透球心到后方一点，让爆裂碎片从镜头两侧擦飞而过
-        const finalDist = -r0 * 0.25;
+        const surfaceDist = r0 * 1.32;
+        const insideDist = -r0 * 0.28; // 穿过中心
 
         const worldUp = new THREE.Vector3(0, 1, 0);
         const right = new THREE.Vector3().crossVectors(r.enterAxis, worldUp).normalize();
@@ -1930,23 +1943,26 @@
 
         let targetDist: number;
         let spiralAmt = 0;
-        if (phase.p < 0.6) {
-          const k = easeInOut3(Math.min(1, phase.p / 0.6));
-          targetDist = THREE.MathUtils.lerp(startDist, r0 * 0.95, k);
-          spiralAmt = Math.sin(k * Math.PI) * r0 * 0.45; // 螺旋推进分量
+        if (phase.p < 0.42) {
+          // pA: 缓慢推进看清顶点凝聚塌缩
+          const k = easeInOut3(phase.p / 0.42);
+          targetDist = THREE.MathUtils.lerp(startDist, surfaceDist, k * 0.48);
+          spiralAmt = Math.sin(k * Math.PI) * r0 * 0.35;
         } else {
-          const kk = easeInPow((phase.p - 0.6) / 0.4, 1.6);
-          targetDist = THREE.MathUtils.lerp(r0 * 0.95, finalDist, kk);
-          spiralAmt = (1.0 - kk) * r0 * 0.45;
+          // pB + pC: 加速穿入穿梭
+          const kk = easeInPow((phase.p - 0.42) / 0.58, 1.6);
+          const startPointDist = THREE.MathUtils.lerp(startDist, surfaceDist, 0.48);
+          targetDist = THREE.MathUtils.lerp(startPointDist, insideDist, kk);
+          spiralAmt = (1.0 - kk) * r0 * 0.35;
         }
 
         const targetPos = r.worldCenter.clone()
           .add(r.enterAxis.clone().multiplyScalar(targetDist))
-          .add(right.multiplyScalar(spiralAmt * 0.6))
-          .add(up.multiplyScalar(spiralAmt * 0.25));
-        cam.position.lerp(targetPos, 0.26);
+          .add(right.multiplyScalar(spiralAmt * 0.5))
+          .add(up.multiplyScalar(spiralAmt * 0.2));
+        cam.position.lerp(targetPos, 0.22);
 
-        ct.lerp(r.worldCenter, 0.26);
+        ct.lerp(r.worldCenter, 0.22);
         tcp.copy(targetPos);
         tla.copy(r.worldCenter);
       },
@@ -1956,61 +1972,99 @@
         const r0 = refs.node.planetSize;
         const particleCount = r.ringInitialAngles.length;
 
-        // ===== 自转蓄力加速 =====
-        // 自转速度在解体前由 0.0045 陡升至 0.28 rad/frame，创造蓄力自转感
-        const spinSpeed = THREE.MathUtils.lerp(0.0045, 0.28, easeInPow(Math.min(1, phase.p / 0.62), 2.3));
+        // ===== 自转与时间流逝 =====
+        const spinSpeed = THREE.MathUtils.lerp(0.0045, 0.22, easeInPow(Math.min(1, phase.p / 0.52), 2.3));
         r.spinPhase += spinSpeed;
 
-        // 星环和未解体的碎片组做整体快速旋转
-        r.ringPoints.rotation.y = -r.spinPhase * 0.75;
-        r.ringPoints.rotation.z = r.spinPhase * 0.32;
+        r.ringPoints.rotation.y = -r.spinPhase * 0.45;
+        r.ringPoints.rotation.z = r.spinPhase * 0.22;
 
-        if (phase.p < 0.6) {
-          r.shards.rotation.y = r.spinPhase;
-          r.shards.rotation.x = r.spinPhase * 0.45;
+        // ===== 阶段 1：6 个八面体顶点向中心凝聚塌缩（0..0.42） =====
+        const collapseT = Math.min(1, phase.p / 0.42);
+        const collapseEase = easeInOut3(collapseT);
+        r.vertexMarkers.forEach((mesh, i) => {
+          const base = r.vertexPositions[i];
+          // 朝中心 (0,0,0) 收缩
+          const pos = new THREE.Vector3().lerpVectors(base, new THREE.Vector3(0, 0, 0), collapseEase);
+          mesh.position.copy(r.worldCenter).add(pos);
+          mesh.scale.setScalar(1.0 - collapseEase * 0.65);
+          const mat = mesh.material as THREE.MeshBasicMaterial;
+          mat.opacity = 0.85 * (1.0 - easeOut3(Math.max(0, (collapseT - 0.7) / 0.3)));
+        });
+
+        // 核心线框八面体也同步向中心塌缩缩小
+        const coreScale = r0 * 0.5 * (1.0 - collapseEase * 0.95);
+        r.core.scale.setScalar(coreScale);
+        r.core.rotation.y += 0.01 + spinSpeed;
+        r.core.rotation.x += 0.004 + spinSpeed * 0.45;
+        const coreMat = r.core.material as THREE.MeshBasicMaterial;
+        coreMat.opacity = 0.26 * (1.0 - collapseEase);
+
+        // 星环粒子向内微微收缩蓄力
+        const rContract = THREE.MathUtils.lerp(1.0, 0.82, easeInOut3(Math.min(1, phase.p / 0.45)));
+
+        // ===== 阶段 2：金色奇点凝聚（0.38..0.58）与炸开辉光圈 =====
+        const singularityMat = r.singularity.material as THREE.MeshBasicMaterial;
+        const haloMat = r.singularityHalo.material as THREE.MeshBasicMaterial;
+        
+        let singOp = 0;
+        if (phase.p > 0.35 && phase.p < 0.85) {
+          singOp = phase.p < 0.52 
+            ? (phase.p - 0.35) / 0.17 
+            : 1.0 - (phase.p - 0.52) / 0.33;
         }
+        singularityMat.opacity += (singOp * 0.95 - singularityMat.opacity) * 0.28;
+        haloMat.opacity += (singOp * 0.6 - haloMat.opacity) * 0.28;
 
-        // ===== 阶段 1：星环在推进时保持常态，穿梭瞬间（0.58后）向四周极速打开 =====
-        const tRing = Math.max(0, (phase.p - 0.58) / 0.42);
-        const expandFactor = 1.0 + easeInPow(tRing, 2.0) * 4.6;
-        const currentR = r0 * 1.25 * expandFactor;
+        const pulse = 1.0 + Math.sin(phase.elapsed * 12.0) * 0.16 * singOp;
+        r.singularity.scale.setScalar(pulse);
+        r.singularityHalo.scale.setScalar(1.0 + (1.0 - singOp) * 1.8);
+        r.singularityHalo.lookAt(refs.camera.position);
+
+        // ===== 阶段 3：坐标轴炸裂 RESONANCE——108颗粒子向三维正交星轨爆开（0.45..1.0） =====
+        const tRing = Math.max(0, (phase.p - 0.45) / 0.55);
+        // 使用物理超调阻尼曲线
+        const springUnroll = tRing <= 0 ? 0 : tRing >= 1 ? 1 : 1 - Math.exp(-tRing * 4.2) * Math.cos(tRing * Math.PI * 1.5);
+        const currentR = THREE.MathUtils.lerp(r0 * 1.25 * rContract, r0 * 6.5, springUnroll);
 
         for (let i = 0; i < particleCount; i += 1) {
           const theta0 = r.ringInitialAngles[i];
-          const theta = theta0; // 让它的旋转由 ringPoints.rotation 整体带动
+          const theta = theta0 - phase.elapsed * 0.08;
           const cosT = Math.cos(theta);
           const sinT = Math.sin(theta);
 
-          r.ringPositions[i * 3 + 0] = cosT * currentR + (r.ringJitter[i] - 0.5) * 0.08 * (1.0 - easeOut3(tRing));
-          r.ringPositions[i * 3 + 1] = (r.ringJitter[i] - 0.5) * 0.05 * (1.0 - easeOut3(tRing));
-          r.ringPositions[i * 3 + 2] = sinT * currentR + (r.ringJitter[i] - 0.5) * 0.08 * (1.0 - easeOut3(tRing));
+          let goalX = 0, goalY = 0, goalZ = 0;
+          let startX = cosT * r0 * 1.25 * rContract;
+          let startY = (r.ringJitter[i] - 0.5) * 0.05;
+          let startZ = sinT * r0 * 1.25 * rContract;
+
+          if (i < 36) {
+            // XY 轴星环
+            goalX = cosT * currentR;
+            goalY = sinT * currentR;
+            goalZ = (r.ringJitter[i] - 0.5) * 0.04;
+          } else if (i < 72) {
+            // YZ 轴星环
+            goalX = (r.ringJitter[i] - 0.5) * 0.04;
+            goalY = cosT * currentR;
+            goalZ = sinT * currentR;
+          } else {
+            // XZ 轴星环
+            goalX = cosT * currentR;
+            goalY = (r.ringJitter[i] - 0.5) * 0.04;
+            goalZ = sinT * currentR;
+          }
+
+          r.ringPositions[i * 3 + 0] = startX + (goalX - startX) * springUnroll;
+          r.ringPositions[i * 3 + 1] = startY + (goalY - startY) * springUnroll;
+          r.ringPositions[i * 3 + 2] = startZ + (goalZ - startZ) * springUnroll;
         }
         (r.ringPoints.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
 
         r.ringMaterial.opacity = 0.48 * (1.0 - easeInOut3(phase.p));
-
-        // ===== 阶段 2：八面体碎片在穿梭瞬间（0.6后）炸裂飞散 =====
-        if (phase.p >= 0.6) {
-          const tShard = Math.max(0, (phase.p - 0.6) / 0.4);
-          // 加速向法线方向飞散
-          const fly = 4.2 * Math.pow(tShard, 1.8);
-          const shardSpin = tShard * Math.PI * 1.5;
-          const shardOp = 0.26 * (1.0 - Math.pow(tShard, 1.5));
-
-          r.shardItems.forEach((s, idx) => {
-            const wobble = 0.9 + (Math.sin(idx * 2.3) * 0.5 + 0.5) * 0.35;
-            const offset = s.normal.clone().multiplyScalar(s.center.length() * fly * wobble);
-            s.mesh.position.copy(s.center).add(offset);
-            s.mesh.rotation.x = shardSpin * (0.5 + (idx % 3) * 0.3);
-            s.mesh.rotation.y = shardSpin * (0.3 + (idx % 2) * 0.4);
-            (s.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, shardOp);
-          });
-        }
       },
 
       updateFocusNode(_runtime, refs, phase) {
-        // 重写接管：由于我们在 build 里对原 coreMesh 和 points 进行了直接 visible = false 的完全隐藏，
-        // 我们不需要在 updateFocusNode 里再去淡出，从而根除了任何跳变或重叠！
         const item = refs.focused;
         if (item.coreMesh) item.coreMesh.visible = false;
         item.outerStructures.forEach((struct) => { struct.visible = false; });
@@ -2022,13 +2076,18 @@
         r.ringPoints.geometry.dispose();
         r.ringMaterial.dispose();
         
-        refs.scene.remove(r.shards);
-        r.shardItems.forEach((s) => {
-          s.mesh.geometry.dispose();
+        r.vertexMarkers.forEach((mesh) => {
+          refs.scene.remove(mesh);
+          mesh.geometry.dispose();
+          (mesh.material as THREE.Material).dispose();
         });
-        if (r.shards.children.length > 0) {
-          ((r.shards.children[0] as THREE.Mesh).material as THREE.Material).dispose();
-        }
+
+        refs.scene.remove(r.singularity);
+        refs.scene.remove(r.singularityHalo);
+        r.singularity.geometry.dispose();
+        r.singularityHalo.geometry.dispose();
+        (r.singularity.material as THREE.Material).dispose();
+        (r.singularityHalo.material as THREE.Material).dispose();
 
         refs.scene.remove(r.core);
         disposeObject3D(r.core);
