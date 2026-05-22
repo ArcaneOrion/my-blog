@@ -22,7 +22,9 @@ aiAssisted: true
 
 ## 最简单的动量因子
 
-$$\text{Momentum}_{i,t} = \frac{P_{i,t} - P_{i,t-12M}}{P_{i,t-12M}}$$
+$$
+\text{Momentum}_{i,t} = \frac{P_{i,t} - P_{i,t-12M}}{P_{i,t-12M}}
+$$
 
 12 个月收益率。按此排序，做多 top 20%，做空 bottom 20%。
 
