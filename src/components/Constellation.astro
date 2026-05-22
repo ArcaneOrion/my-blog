@@ -62,6 +62,8 @@
     coreMesh: THREE.Mesh | THREE.Points;
     outerStructures: THREE.Object3D[];
     basePosition: THREE.Vector3;
+    vertexMarkerMeshes?: THREE.Mesh[];
+    vertexBaseLocal?: THREE.Vector3[];
   }
 
   type EntryKind = NodeData['type'];
@@ -1774,13 +1776,11 @@
         const worldCenter = world.basePosition.clone();
         const enterAxis = cam.position.clone().sub(worldCenter).normalize();
 
-        // 隐藏常态节点，实现无缝接管，确保零跳变
-        const originalPoints = world.outerStructures[0] as THREE.Points;
+        const originalPoints = world.outerStructures[world.outerStructures.length - 1] as THREE.Points;
         const originalCore = world.coreMesh as THREE.Mesh;
         if (originalPoints) originalPoints.visible = false;
         if (originalCore) originalCore.visible = false;
 
-        // 1. 三组正交金色星轨，共 108 颗粒子
         const particleCount = 108;
         const positions = new Float32Array(particleCount * 3);
         const initialAngles = new Float32Array(particleCount);
@@ -1795,8 +1795,7 @@
 
         const ringRadius = r0 * 1.25;
         for (let i = 0; i < particleCount; i += 1) {
-          jitter[i] = (Math.sin(i * 17.3) * 0.5 + 0.5); // 伪随机
-          // 在 build 瞬间，为了做到 100% 无缝重合，108颗粒子的本地坐标全对齐常态环当前的粒子位置
+          jitter[i] = (Math.sin(i * 17.3) * 0.5 + 0.5);
           if (origCount > 0 && origArray) {
             const idx = (i % origCount) * 3;
             positions[i * 3 + 0] = origArray[idx + 0];
@@ -1808,7 +1807,6 @@
             positions[i * 3 + 1] = 0;
             positions[i * 3 + 2] = Math.sin(theta) * ringRadius;
           }
-          // 每 36 颗构成一组轨道角
           initialAngles[i] = ((i % 36) / 36) * Math.PI * 2;
         }
 
@@ -1816,15 +1814,14 @@
         geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         const ringMaterial = new THREE.PointsMaterial({
           color: node.color,
-          size: 0.052,
+          size: 0.05,
           transparent: true,
-          opacity: 0.48, // 与常态完全对齐
+          opacity: 0.30,
           depthWrite: false,
         });
 
         const ringPoints = new THREE.Points(geom, ringMaterial);
         ringPoints.position.copy(worldCenter);
-        // 继承常态粒子环的实时旋转，确保完全一致
         const initialQuat = new THREE.Quaternion();
         if (originalPoints) {
           initialQuat.copy(originalPoints.quaternion);
@@ -1833,35 +1830,8 @@
         ringPoints.userData = { initialQuat };
         sc.add(ringPoints);
 
-        // 2. 八面体的 6 个高亮顶点，用于向中心塌缩
-        const octVerts = [
-          new THREE.Vector3(1, 0, 0),
-          new THREE.Vector3(-1, 0, 0),
-          new THREE.Vector3(0, 1, 0),
-          new THREE.Vector3(0, -1, 0),
-          new THREE.Vector3(0, 0, 1),
-          new THREE.Vector3(0, 0, -1),
-        ].map((v) => v.multiplyScalar(r0 * 0.5));
-
-        const vertexMarkerMat = new THREE.MeshBasicMaterial({
-          color: node.color,
-          transparent: true,
-          opacity: 0.85,
-          depthWrite: false,
-        });
-        const vertexMarkers = octVerts.map((v) => {
-          const mesh = new THREE.Mesh(
-            new THREE.SphereGeometry(r0 * 0.065, 12, 8),
-            vertexMarkerMat,
-          );
-          mesh.position.copy(worldCenter).add(v);
-          if (originalCore) {
-            // 让高亮小球和原核心的旋转对齐
-            mesh.position.sub(worldCenter).applyQuaternion(originalCore.quaternion).add(worldCenter);
-          }
-          sc.add(mesh);
-          return mesh;
-        });
+        const vertexMarkers = world.vertexMarkerMeshes ?? [];
+        const octVerts = (world.vertexBaseLocal ?? []).map((v) => v.clone());
 
         // 3. 奇点光球 + 辉光圈
         const singularity = new THREE.Mesh(
@@ -1996,17 +1966,19 @@
         r.ringPoints.rotation.y = -r.spinPhase * 0.45;
         r.ringPoints.rotation.z = r.spinPhase * 0.22;
 
-        // ===== 阶段 1：6 个八面体顶点向中心凝聚塌缩（0..0.42） =====
+        // ===== 阶段 1：6 个八面体顶点从常态低亮(0.22)被激活到 0.85,同时向中心凝聚塌缩(0..0.42) =====
+        // 小球归属于 vertexMarkerGroup（pGroup 子节点），跟随 group 自转，position 是局部坐标
         const collapseT = Math.min(1, phase.p / 0.42);
         const collapseEase = easeInOut3(collapseT);
+        const vertexFadeIn = THREE.MathUtils.lerp(0.22, 0.85, easeInOut3(Math.min(1, phase.p / 0.18)));
+        const vertexFadeOut = 1.0 - easeOut3(Math.max(0, (collapseT - 0.7) / 0.3));
         r.vertexMarkers.forEach((mesh, i) => {
           const base = r.vertexPositions[i];
-          // 朝中心 (0,0,0) 收缩
           const pos = new THREE.Vector3().lerpVectors(base, new THREE.Vector3(0, 0, 0), collapseEase);
-          mesh.position.copy(r.worldCenter).add(pos);
+          mesh.position.copy(pos);
           mesh.scale.setScalar(1.0 - collapseEase * 0.65);
           const mat = mesh.material as THREE.MeshBasicMaterial;
-          mat.opacity = 0.85 * (1.0 - easeOut3(Math.max(0, (collapseT - 0.7) / 0.3)));
+          mat.opacity = vertexFadeIn * vertexFadeOut;
         });
 
         // 核心线框八面体也同步向中心塌缩缩小
@@ -2108,18 +2080,14 @@
         }
         (r.ringPoints.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
 
-        // 改进点 4：星环粒子的不透明度不要在凝聚和爆开初期就几乎扣减为零，
-        // 必须在穿梭高潮期 [0.45, 0.85] 维持高位，这样当相机爆开冲刺时，粒子才可以在两侧清晰看到，
-        // 最终在最后 15% (p > 0.85) 极速转场阶段，伴随拉伸冲刺快速降为 0！
-        let targetRingOp = 0.48;
+        // 改进点 4：星环粒子的不透明度从常态(0.30)被激活到高潮(0.65)，确保过渡首帧零跳变。
+        // 高潮期(0.45..0.85) 维持饱满,最后 15% 跃迁冲刺快速降为 0。
+        let targetRingOp = 0.30;
         if (phase.p < 0.45) {
-          // 凝聚蓄力，星光收紧并微幅增强
-          targetRingOp = THREE.MathUtils.lerp(0.48, 0.65, easeInOut3(phase.p / 0.45));
+          targetRingOp = THREE.MathUtils.lerp(0.30, 0.65, easeInOut3(phase.p / 0.45));
         } else if (phase.p < 0.85) {
-          // 穿梭高潮期，维持在清晰可见的饱满度
           targetRingOp = 0.65;
         } else {
-          // 跃迁冲刺极速转场，快速降为 0
           targetRingOp = 0.65 * (1.0 - (phase.p - 0.85) / 0.15);
         }
         r.ringMaterial.opacity = targetRingOp;
@@ -2128,7 +2096,9 @@
       updateFocusNode(_runtime, refs, phase) {
         const item = refs.focused;
         if (item.coreMesh) item.coreMesh.visible = false;
-        item.outerStructures.forEach((struct) => { struct.visible = false; });
+        // 只隐藏粒子环(过渡新建的副本接管),vertexMarkerGroup 保留显示——小球被过渡原地接管
+        const last = item.outerStructures[item.outerStructures.length - 1];
+        if (last) last.visible = false;
       },
 
       dispose(_runtime, refs) {
@@ -2136,11 +2106,14 @@
         refs.scene.remove(r.ringPoints);
         r.ringPoints.geometry.dispose();
         r.ringMaterial.dispose();
-        
-        r.vertexMarkers.forEach((mesh) => {
-          refs.scene.remove(mesh);
-          mesh.geometry.dispose();
-          (mesh.material as THREE.Material).dispose();
+
+        // 顶点小球归属 pGroup,过渡只是接管它们的位置/缩放/不透明度,这里复位即可,不要 dispose
+        const baseLocal = refs.focused.vertexBaseLocal ?? [];
+        r.vertexMarkers.forEach((mesh, i) => {
+          if (baseLocal[i]) mesh.position.copy(baseLocal[i]);
+          mesh.scale.setScalar(1);
+          const mat = mesh.material as THREE.MeshBasicMaterial;
+          mat.opacity = 0.22;
         });
 
         refs.scene.remove(r.singularity);
@@ -2156,7 +2129,6 @@
         refs.scene.remove(r.core);
         disposeObject3D(r.core);
 
-        // 退出重置可见性，确保返回Overview时，原星座节点无缝还原
         const item = refs.focused;
         if (item.coreMesh) {
           item.coreMesh.visible = true;
@@ -2165,7 +2137,7 @@
         item.outerStructures.forEach((struct) => {
           struct.visible = true;
           const m = (struct as THREE.Mesh | THREE.Points).material as THREE.Material | undefined;
-          if (m) m.opacity = 0.48;
+          if (m) m.opacity = 0.30;
         });
       },
     };
@@ -2278,6 +2250,8 @@
 
       const outerStructures: THREE.Object3D[] = [];
       let coreMesh: THREE.Mesh | THREE.Points;
+      let vertexMarkerMeshes: THREE.Mesh[] | undefined;
+      let vertexBaseLocal: THREE.Vector3[] | undefined;
 
       if (node.type === 'icosahedron_ring') {
         coreMesh = new THREE.Mesh(
@@ -2348,8 +2322,34 @@
         );
         pGroup.add(coreMesh);
 
+        const vertexMarkerGroup = new THREE.Group();
+        vertexBaseLocal = [
+          new THREE.Vector3(1, 0, 0),
+          new THREE.Vector3(-1, 0, 0),
+          new THREE.Vector3(0, 1, 0),
+          new THREE.Vector3(0, -1, 0),
+          new THREE.Vector3(0, 0, 1),
+          new THREE.Vector3(0, 0, -1),
+        ].map((v) => v.multiplyScalar(node.planetSize * 0.5));
+        vertexMarkerMeshes = vertexBaseLocal.map((v) => {
+          const mesh = new THREE.Mesh(
+            new THREE.SphereGeometry(node.planetSize * 0.065, 12, 8),
+            new THREE.MeshBasicMaterial({
+              color: node.color,
+              transparent: true,
+              opacity: 0.22,
+              depthWrite: false,
+            }),
+          );
+          mesh.position.copy(v);
+          vertexMarkerGroup.add(mesh);
+          return mesh;
+        });
+        pGroup.add(vertexMarkerGroup);
+        outerStructures.push(vertexMarkerGroup);
+
         const ringParticleGeom = new THREE.BufferGeometry();
-        const particleCount = 56;
+        const particleCount = 108;
         const positions = new Float32Array(particleCount * 3);
         const r = node.planetSize * 1.25;
         for (let i = 0; i < particleCount; i++) {
@@ -2361,7 +2361,7 @@
         ringParticleGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         const points = new THREE.Points(
           ringParticleGeom,
-          new THREE.PointsMaterial({ color: node.color, size: 0.05, transparent: true, opacity: 0.48 }),
+          new THREE.PointsMaterial({ color: node.color, size: 0.05, transparent: true, opacity: 0.30 }),
         );
         pGroup.add(points);
         outerStructures.push(points);
@@ -2376,7 +2376,7 @@
       raycastTargets.push(hitMesh);
 
       nodesGroup.add(pGroup);
-      worlds.push({ data: node, group: pGroup, coreMesh, outerStructures, basePosition: node.position.clone() });
+      worlds.push({ data: node, group: pGroup, coreMesh, outerStructures, basePosition: node.position.clone(), vertexMarkerMeshes, vertexBaseLocal });
     }
 
     nodesData.forEach(createNodeObject);
