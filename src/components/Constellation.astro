@@ -1756,6 +1756,7 @@
       
       singularity: THREE.Mesh;
       singularityHalo: THREE.Mesh;
+      flashOverlay: THREE.Mesh;
       
       core: THREE.Mesh;
       targetQuat: THREE.Quaternion;
@@ -1889,6 +1890,21 @@
         singularityHalo.lookAt(cam.position);
         sc.add(singularityHalo);
 
+        // 3.5 闪光片 (Gold Flash Plane) 用于在最后 15% 穿梭中在镜头前创造极致的渐变吞噬
+        const flashOverlay = new THREE.Mesh(
+          new THREE.PlaneGeometry(r0 * 1.5, r0 * 1.5),
+          new THREE.MeshBasicMaterial({
+            color: node.color,
+            transparent: true,
+            opacity: 0,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+          }),
+        );
+        flashOverlay.position.copy(worldCenter);
+        flashOverlay.lookAt(cam.position);
+        sc.add(flashOverlay);
+
         // 4. 接管原本核心八面体
         const core = new THREE.Mesh(
           new THREE.OctahedronGeometry(r0 * 0.5, 0),
@@ -1916,6 +1932,7 @@
           vertexPositions: octVerts,
           singularity,
           singularityHalo,
+          flashOverlay,
           core,
           targetQuat: initialQuat,
           enterAxis,
@@ -1935,7 +1952,7 @@
 
         const startDist = refs.enteringStartCamera.distanceTo(r.worldCenter);
         const surfaceDist = r0 * 1.32;
-        const insideDist = -r0 * 0.28; // 穿过中心
+        const insideDist = -r0 * 0.42; // 推进穿梭得更深（完全穿透并超越球心）
 
         const worldUp = new THREE.Vector3(0, 1, 0);
         const right = new THREE.Vector3().crossVectors(r.enterAxis, worldUp).normalize();
@@ -1949,8 +1966,8 @@
           targetDist = THREE.MathUtils.lerp(startDist, surfaceDist, k * 0.48);
           spiralAmt = Math.sin(k * Math.PI) * r0 * 0.35;
         } else {
-          // pB + pC: 加速穿入穿梭
-          const kk = easeInPow((phase.p - 0.42) / 0.58, 1.6);
+          // pB + pC: 采用强加速冲刺推进（更高次幂 2.2），创造极致的速度穿透感
+          const kk = easeInPow((phase.p - 0.42) / 0.58, 2.2);
           const startPointDist = THREE.MathUtils.lerp(startDist, surfaceDist, 0.48);
           targetDist = THREE.MathUtils.lerp(startPointDist, insideDist, kk);
           spiralAmt = (1.0 - kk) * r0 * 0.35;
@@ -2008,17 +2025,37 @@
         const haloMat = r.singularityHalo.material as THREE.MeshBasicMaterial;
         
         let singOp = 0;
-        if (phase.p > 0.35 && phase.p < 0.85) {
-          singOp = phase.p < 0.52 
-            ? (phase.p - 0.35) / 0.17 
-            : 1.0 - (phase.p - 0.52) / 0.33;
+        if (phase.p > 0.35) {
+          if (phase.p < 0.52) {
+            singOp = (phase.p - 0.35) / 0.17;
+          } else if (phase.p < 0.82) {
+            singOp = 1.0;
+          } else {
+            singOp = 1.0 - (phase.p - 0.82) / 0.18;
+          }
         }
         singularityMat.opacity += (singOp * 0.95 - singularityMat.opacity) * 0.28;
         haloMat.opacity += (singOp * 0.6 - haloMat.opacity) * 0.28;
 
         const pulse = 1.0 + Math.sin(phase.elapsed * 12.0) * 0.16 * singOp;
-        r.singularity.scale.setScalar(pulse);
-        r.singularityHalo.scale.setScalar(1.0 + (1.0 - singOp) * 1.8);
+        
+        if (phase.p > 0.82) {
+          const tWarp = (phase.p - 0.82) / 0.18;
+          const warpScale = 1.0 + Math.pow(tWarp, 3) * 16.0;
+          r.singularity.scale.setScalar(pulse * warpScale);
+          r.singularityHalo.scale.setScalar((1.0 + (1.0 - singOp) * 1.8) * (1.0 + tWarp * 4.5));
+          
+          const flashMat = r.flashOverlay.material as THREE.MeshBasicMaterial;
+          flashMat.opacity = Math.min(1.0, Math.pow(tWarp, 2.5) * 1.1);
+          r.flashOverlay.scale.setScalar(1.0 + tWarp * 5.0);
+          r.flashOverlay.lookAt(refs.camera.position);
+        } else {
+          r.singularity.scale.setScalar(pulse);
+          r.singularityHalo.scale.setScalar(1.0 + (1.0 - singOp) * 1.8);
+          
+          const flashMat = r.flashOverlay.material as THREE.MeshBasicMaterial;
+          flashMat.opacity = 0;
+        }
         r.singularityHalo.lookAt(refs.camera.position);
 
         // ===== 阶段 3：坐标轴炸裂 RESONANCE——108颗粒子向三维正交星轨爆开（0.45..1.0） =====
@@ -2055,13 +2092,37 @@
             goalZ = sinT * currentR;
           }
 
+          // 改进点 3：在最后的冲刺阶段 (p > 0.85)，让正交粒子也向外产生径向极速飙升，
+          // 并产生拉伸飞逝感，从而增强穿梭的时空扭曲速度感！
+          if (phase.p > 0.85) {
+            const tWarpRing = (phase.p - 0.85) / 0.15;
+            const stretchDist = 1.0 + Math.pow(tWarpRing, 2.5) * 3.5;
+            goalX *= stretchDist;
+            goalY *= stretchDist;
+            goalZ *= stretchDist;
+          }
+
           r.ringPositions[i * 3 + 0] = startX + (goalX - startX) * springUnroll;
           r.ringPositions[i * 3 + 1] = startY + (goalY - startY) * springUnroll;
           r.ringPositions[i * 3 + 2] = startZ + (goalZ - startZ) * springUnroll;
         }
         (r.ringPoints.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
 
-        r.ringMaterial.opacity = 0.48 * (1.0 - easeInOut3(phase.p));
+        // 改进点 4：星环粒子的不透明度不要在凝聚和爆开初期就几乎扣减为零，
+        // 必须在穿梭高潮期 [0.45, 0.85] 维持高位，这样当相机爆开冲刺时，粒子才可以在两侧清晰看到，
+        // 最终在最后 15% (p > 0.85) 极速转场阶段，伴随拉伸冲刺快速降为 0！
+        let targetRingOp = 0.48;
+        if (phase.p < 0.45) {
+          // 凝聚蓄力，星光收紧并微幅增强
+          targetRingOp = THREE.MathUtils.lerp(0.48, 0.65, easeInOut3(phase.p / 0.45));
+        } else if (phase.p < 0.85) {
+          // 穿梭高潮期，维持在清晰可见的饱满度
+          targetRingOp = 0.65;
+        } else {
+          // 跃迁冲刺极速转场，快速降为 0
+          targetRingOp = 0.65 * (1.0 - (phase.p - 0.85) / 0.15);
+        }
+        r.ringMaterial.opacity = targetRingOp;
       },
 
       updateFocusNode(_runtime, refs, phase) {
@@ -2084,10 +2145,13 @@
 
         refs.scene.remove(r.singularity);
         refs.scene.remove(r.singularityHalo);
+        refs.scene.remove(r.flashOverlay);
         r.singularity.geometry.dispose();
         r.singularityHalo.geometry.dispose();
+        r.flashOverlay.geometry.dispose();
         (r.singularity.material as THREE.Material).dispose();
         (r.singularityHalo.material as THREE.Material).dispose();
+        (r.flashOverlay.material as THREE.Material).dispose();
 
         refs.scene.remove(r.core);
         disposeObject3D(r.core);
