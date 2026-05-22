@@ -2,6 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import ArticleCard from '../components/ArticleCard.astro';
 import StructureField from '../components/StructureField.astro';
+import katex from 'katex';
 import { getCollection } from 'astro:content';
 import { domains, pathFor, type DomainName } from '../lib/site';
 
@@ -23,6 +24,8 @@ const domainTagMap: Record<string, DomainName> = {
 };
 const domainTag = domainTagMap[domain as string];
 const info = domains[domainTag];
+
+const formulaHtml = katex.renderToString(info.formula, { throwOnError: false, displayMode: false });
 
 const allPosts = await getCollection('blog', (p) => !p.data.draft);
 const posts = allPosts
@@ -46,10 +49,9 @@ const posts = allPosts
           </p>
         </div>
 
-        <div class="observatory-panel flex items-center justify-between p-6">
-          <div>
-            <p class="mt-3 font-display text-5xl text-domain">{info.glyph}</p>
-          </div>
+        <div class="observatory-panel grid grid-cols-[auto_1fr] items-center gap-6 p-6">
+          <p class="domain-glyph text-7xl text-domain leading-none">{info.glyph}</p>
+          <span class="domain-formula justify-self-center text-lg text-domain opacity-80" set:html={formulaHtml} />
         </div>
       </header>
 
@@ -75,3 +77,12 @@ const posts = allPosts
     </main>
   </div>
 </BaseLayout>
+
+<style>
+  .domain-glyph {
+    font-family: 'Italiana', 'Cormorant Garamond', 'STIX Two Math', 'Cambria Math', 'Apple Symbols', 'Noto Sans Math', 'Noto Sans Symbols 2', 'Segoe UI Symbol', 'DejaVu Sans', 'Georgia', serif;
+  }
+  .domain-formula :global(.katex) {
+    color: inherit;
+  }
+</style>
