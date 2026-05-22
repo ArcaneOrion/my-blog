@@ -1744,31 +1744,25 @@
     //                    镜头从俯视位置侧滑到沿 +x 方向的"擦地视角"，
     //                    内核被时间线"拉走"——也跟着 +x 飞出
 
-      interface JournalPage {
+    interface JournalShard {
       mesh: THREE.Mesh;
-      origin: THREE.Vector3;
-      delay: number;
+      normal: THREE.Vector3;
+      center: THREE.Vector3;
     }
 
     interface JournalEntryRuntime {
-      pages: THREE.Group;
-      pageItems: JournalPage[];
-      pageMaterial: THREE.MeshBasicMaterial;
-      spineLines: THREE.LineSegments;
-      spineMaterial: THREE.LineBasicMaterial;
       ringPoints: THREE.Points;
       ringMaterial: THREE.PointsMaterial;
-      ringPositions: Float32Array;       // 当前位置
-      ringInitialAngles: Float32Array;   // 每个粒子的原始角度（用于映射）
-      ringJitter: Float32Array;          // 噪声维度
+      ringPositions: Float32Array;
+      ringInitialAngles: Float32Array;
+      ringJitter: Float32Array;
+      shards: THREE.Group;
+      shardItems: JournalShard[];
       core: THREE.Mesh;
-      invariantKnot: THREE.LineLoop;     // 拓扑三叶结不变量
-      invariantKnotMaterial: THREE.LineBasicMaterial;
+      targetQuat: THREE.Quaternion;
       enterAxis: THREE.Vector3;
-      timelineAxis: THREE.Vector3;       // 时间线展开方向（local +x）
-      timelineUp: THREE.Vector3;         // 时间线波纹方向（local +z）
-      sideViewAxis: THREE.Vector3;       // 镜头最终所在方向
       worldCenter: THREE.Vector3;
+      spinPhase: number;
     }
 
     const journalEntryProgram: EntryProgram = {
@@ -1780,129 +1774,140 @@
         const worldCenter = world.basePosition.clone();
         const enterAxis = cam.position.clone().sub(worldCenter).normalize();
 
-        // 时间线方向：取与 enterAxis 正交、且尽量"水平"的方向
-        const worldUp = new THREE.Vector3(0, 1, 0);
-        const timelineAxis = new THREE.Vector3().crossVectors(worldUp, enterAxis).normalize();
-        const timelineUp = new THREE.Vector3().crossVectors(timelineAxis, enterAxis).normalize();
-        // 镜头最终方向：沿 timelineAxis 反向看过去（让时间线横在前面）
-        const sideViewAxis = enterAxis.clone().multiplyScalar(0.4).add(timelineAxis.clone().multiplyScalar(0.85)).normalize();
+        // 隐藏常态节点，实现无缝接管，确保零跳变
+        const originalPoints = world.outerStructures[0] as THREE.Points;
+        const originalCore = world.coreMesh as THREE.Mesh;
+        if (originalPoints) originalPoints.visible = false;
+        if (originalCore) originalCore.visible = false;
 
-        const pages = new THREE.Group();
-        pages.position.copy(worldCenter);
-        sc.add(pages);
-        const pageMaterial = new THREE.MeshBasicMaterial({ color: node.color, side: THREE.DoubleSide, transparent: true, opacity: 0, depthWrite: false });
-        const pageItems: JournalPage[] = [];
-        const pageCount = 9;
-        for (let i = 0; i < pageCount; i += 1) {
-          const mesh = new THREE.Mesh(new THREE.PlaneGeometry(r0 * (1.0 + (i % 3) * 0.14), r0 * 0.42, 1, 1), pageMaterial);
-          const origin = timelineAxis.clone().multiplyScalar((i - (pageCount - 1) / 2) * r0 * 0.22)
-            .add(timelineUp.clone().multiplyScalar(Math.sin(i * 1.7) * r0 * 0.12))
-            .add(enterAxis.clone().multiplyScalar((i - (pageCount - 1) / 2) * r0 * 0.04));
-          mesh.position.copy(origin);
-          mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), enterAxis);
-          mesh.rotateZ((i - 4) * 0.04);
-          pages.add(mesh);
-          pageItems.push({ mesh, origin, delay: i * 0.026 });
-        }
-
-        const spinePositions = new Float32Array(pageCount * 6);
-        const spineGeom = new THREE.BufferGeometry();
-        spineGeom.setAttribute('position', new THREE.BufferAttribute(spinePositions, 3));
-        const spineMaterial = new THREE.LineBasicMaterial({ color: node.color, transparent: true, opacity: 0, depthWrite: false });
-        const spineLines = new THREE.LineSegments(spineGeom, spineMaterial);
-        spineLines.position.copy(worldCenter);
-        sc.add(spineLines);
-
-        // 环粒子
-        const particleCount = 90;
+        const particleCount = 56; // 100% 对齐原本常态下的 56 颗粒子
         const positions = new Float32Array(particleCount * 3);
         const initialAngles = new Float32Array(particleCount);
         const jitter = new Float32Array(particleCount);
+
+        let origArray: Float32Array | null = null;
+        let origCount = 0;
+        if (originalPoints && originalPoints.geometry.attributes.position) {
+          origArray = originalPoints.geometry.attributes.position.array as Float32Array;
+          origCount = Math.min(56, originalPoints.geometry.attributes.position.count);
+        }
+
         const ringRadius = r0 * 1.25;
         for (let i = 0; i < particleCount; i += 1) {
+          jitter[i] = (Math.sin(i * 17.3) * 0.5 + 0.5); // 伪随机
           const theta = (i / particleCount) * Math.PI * 2;
           initialAngles[i] = theta;
-          jitter[i] = (Math.sin(i * 17.3) * 0.5 + 0.5);  // 0..1 的伪随机
-          positions[i * 3 + 0] = Math.cos(theta) * ringRadius + (jitter[i] - 0.5) * 0.1;
-          positions[i * 3 + 1] = (jitter[i] - 0.5) * 0.06;
-          positions[i * 3 + 2] = Math.sin(theta) * ringRadius + (jitter[i] - 0.5) * 0.1;
+
+          if (i < origCount && origArray) {
+            // 前 56 颗完全对齐常态粒子的实时坐标
+            positions[i * 3 + 0] = origArray[i * 3 + 0];
+            positions[i * 3 + 1] = origArray[i * 3 + 1];
+            positions[i * 3 + 2] = origArray[i * 3 + 2];
+          } else {
+            positions[i * 3 + 0] = Math.cos(theta) * ringRadius;
+            positions[i * 3 + 1] = 0;
+            positions[i * 3 + 2] = Math.sin(theta) * ringRadius;
+          }
         }
+
         const geom = new THREE.BufferGeometry();
         geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         const ringMaterial = new THREE.PointsMaterial({
           color: node.color,
-          size: 0.08,
+          size: 0.05,
           transparent: true,
-          opacity: 0.7,
+          opacity: 0.48, // 与常态无缝对接
           depthWrite: false,
         });
+
         const ringPoints = new THREE.Points(geom, ringMaterial);
         ringPoints.position.copy(worldCenter);
+        // 继承常态粒子环的实时旋转，确保完全一致
+        const initialQuat = new THREE.Quaternion();
+        if (originalPoints) {
+          initialQuat.copy(originalPoints.quaternion);
+        }
+        ringPoints.quaternion.copy(initialQuat);
+        ringPoints.userData = { initialQuat };
         sc.add(ringPoints);
 
-        // 内核小八面体
+        // 碎裂八面体（shards）：提取原本 coreMesh 的 8 个三角形，供之后向四周爆开飞散
+        const octGeom = new THREE.OctahedronGeometry(r0 * 0.5, 0);
+        const shards = new THREE.Group();
+        shards.position.copy(worldCenter);
+        if (originalCore) {
+          shards.rotation.copy(originalCore.rotation);
+        }
+        sc.add(shards);
+
+        const shardItems: JournalShard[] = [];
+        const posAttr = octGeom.attributes.position as THREE.BufferAttribute;
+        const index = octGeom.index;
+        const triCount = index ? index.count / 3 : posAttr.count / 3;
+
+        // 八面体碎片的材质
+        const shardMaterial = new THREE.MeshBasicMaterial({
+          color: node.color,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.26,
+          wireframe: true, // 保持 wireframe 线框以呼应常态 coreMesh
+          depthWrite: false,
+        });
+
+        for (let t = 0; t < triCount; t += 1) {
+          const i0 = index ? index.getX(t * 3 + 0) : t * 3 + 0;
+          const i1 = index ? index.getX(t * 3 + 1) : t * 3 + 1;
+          const i2 = index ? index.getX(t * 3 + 2) : t * 3 + 2;
+          const v0 = new THREE.Vector3(posAttr.getX(i0), posAttr.getY(i0), posAttr.getZ(i0));
+          const v1 = new THREE.Vector3(posAttr.getX(i1), posAttr.getY(i1), posAttr.getZ(i1));
+          const v2 = new THREE.Vector3(posAttr.getX(i2), posAttr.getY(i2), posAttr.getZ(i2));
+          const center = new THREE.Vector3().addVectors(v0, v1).add(v2).multiplyScalar(1 / 3);
+
+          const local0 = v0.clone().sub(center);
+          const local1 = v1.clone().sub(center);
+          const local2 = v2.clone().sub(center);
+
+          const triGeom = new THREE.BufferGeometry();
+          triGeom.setAttribute('position', new THREE.Float32BufferAttribute([
+            local0.x, local0.y, local0.z,
+            local1.x, local1.y, local1.z,
+            local2.x, local2.y, local2.z,
+          ], 3));
+          triGeom.setIndex([0, 1, 2]);
+          triGeom.computeVertexNormals();
+
+          const mesh = new THREE.Mesh(triGeom, shardMaterial);
+          mesh.position.copy(center);
+          shards.add(mesh);
+          shardItems.push({
+            mesh,
+            normal: center.clone().normalize(),
+            center: center.clone(),
+          });
+        }
+
+        // 创建临时核心 Mesh（占位但实际上会被 shards 接管）
         const core = new THREE.Mesh(
-          new THREE.OctahedronGeometry(r0 * 0.5, 0),
-          new THREE.MeshBasicMaterial({
-            color: node.color,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.6,
-            depthWrite: false,
-          }),
+          new THREE.OctahedronGeometry(r0 * 0.01, 0),
+          new THREE.MeshBasicMaterial({ visible: false }),
         );
         core.position.copy(worldCenter);
         sc.add(core);
-        // 拓扑三叶结不变量：在 pC 阶段留存在虚空中心，以表达 Invariant
-        const knotPositions: number[] = [];
-        const knotSegments = 100;
-        for (let i = 0; i <= knotSegments; i += 1) {
-          const t = (i / knotSegments) * Math.PI * 2 * 3; // 三绕
-          // 三叶结经典参数方程 (Trefoil Knot)
-          const kx = Math.sin(t) + 2 * Math.sin(2 * t);
-          const ky = Math.cos(t) - 2 * Math.cos(2 * t);
-          const kz = -Math.sin(3 * t);
-          // 缩放到节点半径的一半左右
-          const scale = r0 * 0.16;
-          // 变换到由 timelineAxis, timelineUp, enterAxis 支撑的 3D 坐标系中
-          const pt = timelineAxis.clone().multiplyScalar(kx * scale)
-            .add(timelineUp.clone().multiplyScalar(ky * scale))
-            .add(enterAxis.clone().multiplyScalar(kz * scale));
-          knotPositions.push(pt.x, pt.y, pt.z);
-        }
-        const knotGeom = new THREE.BufferGeometry();
-        knotGeom.setAttribute('position', new THREE.Float32BufferAttribute(knotPositions, 3));
-        const invariantKnotMaterial = new THREE.LineBasicMaterial({
-          color: node.color,
-          transparent: true,
-          opacity: 0,
-          depthWrite: false,
-          linewidth: 1.5,
-        });
-        const invariantKnot = new THREE.LineLoop(knotGeom, invariantKnotMaterial);
-        invariantKnot.position.copy(worldCenter);
-        sc.add(invariantKnot);
-
 
         return {
-          pages,
-          pageItems,
-          pageMaterial,
-          spineLines,
-          spineMaterial,
           ringPoints,
           ringMaterial,
           ringPositions: positions,
           ringInitialAngles: initialAngles,
           ringJitter: jitter,
+          shards,
+          shardItems,
           core,
-          invariantKnot,
-          invariantKnotMaterial,
+          targetQuat: initialQuat,
           enterAxis,
-          timelineAxis,
-          timelineUp,
-          sideViewAxis,
           worldCenter,
+          spinPhase: 0,
         } as JournalEntryRuntime;
       },
 
@@ -1911,180 +1916,134 @@
         const { camera: cam, cameraTarget: ct, targetCameraPos: tcp, targetLookAt: tla } = refs;
         const r0 = refs.node.planetSize;
 
-        const targetFov = 50 + 4 * easeInOut3(Math.min(1, phase.p / 0.85));
+        const targetFov = 50 + 16 * easeInOut3(Math.min(1, phase.p / 0.85));
         cam.fov += (targetFov - cam.fov) * 0.18;
         cam.updateProjectionMatrix();
 
         const startDist = refs.enteringStartCamera.distanceTo(r.worldCenter);
-        const approachDist = r0 * 3.0;
-        const finalDist = r0 * 2.0;
+        // 穿透球心到后方一点，让爆裂碎片从镜头两侧擦飞而过
+        const finalDist = -r0 * 0.25;
 
-        // 镜头方向：从 enterAxis 渐变到 sideViewAxis（即"沿时间线方向看过去"）
-        const sideMix = easeInOut3(Math.min(1, phase.p / 0.85));
-        const blendedAxis = r.enterAxis.clone().multiplyScalar(1 - sideMix)
-          .add(r.sideViewAxis.clone().multiplyScalar(sideMix))
-          .normalize();
+        const worldUp = new THREE.Vector3(0, 1, 0);
+        const right = new THREE.Vector3().crossVectors(r.enterAxis, worldUp).normalize();
+        const up = new THREE.Vector3().crossVectors(right, r.enterAxis).normalize();
 
         let targetDist: number;
-        if (phase.p < 0.5) {
-          const k = easeInOut3(phase.p / 0.5);
-          targetDist = THREE.MathUtils.lerp(startDist, approachDist, k);
+        let spiralAmt = 0;
+        if (phase.p < 0.6) {
+          const k = easeInOut3(Math.min(1, phase.p / 0.6));
+          targetDist = THREE.MathUtils.lerp(startDist, r0 * 0.95, k);
+          spiralAmt = Math.sin(k * Math.PI) * r0 * 0.45; // 螺旋推进分量
         } else {
-          const kk = easeInOut3((phase.p - 0.5) / 0.5);
-          targetDist = THREE.MathUtils.lerp(approachDist, finalDist, kk);
+          const kk = easeInPow((phase.p - 0.6) / 0.4, 1.6);
+          targetDist = THREE.MathUtils.lerp(r0 * 0.95, finalDist, kk);
+          spiralAmt = (1.0 - kk) * r0 * 0.45;
         }
 
-        // 镜头横向位置：随 sideMix 沿 timelineAxis 反方向移动（让时间线"展开"在镜头前）
-        const slidePan = sideMix * r0 * 1.2;
         const targetPos = r.worldCenter.clone()
-          .add(blendedAxis.multiplyScalar(targetDist))
-          .add(r.timelineAxis.clone().multiplyScalar(-slidePan));
-        cam.position.lerp(targetPos, 0.22);
-        // 把 lookAt 也沿 timelineAxis 正方向偏一点（看向时间线的"未来"端）
-        const lookAtPos = r.worldCenter.clone().add(r.timelineAxis.clone().multiplyScalar(slidePan * 0.4));
-        ct.lerp(lookAtPos, 0.22);
+          .add(r.enterAxis.clone().multiplyScalar(targetDist))
+          .add(right.multiplyScalar(spiralAmt * 0.6))
+          .add(up.multiplyScalar(spiralAmt * 0.25));
+        cam.position.lerp(targetPos, 0.26);
+
+        ct.lerp(r.worldCenter, 0.26);
         tcp.copy(targetPos);
-        tla.copy(lookAtPos);
+        tla.copy(r.worldCenter);
       },
 
       updateGeometry(_runtime, refs, phase) {
         const r = _runtime as JournalEntryRuntime;
         const r0 = refs.node.planetSize;
         const particleCount = r.ringInitialAngles.length;
-        const ringRadius = r0 * 1.25;
 
-        const foldPages = easeInOut3(THREE.MathUtils.clamp((phase.p - 0.05) / 0.38, 0, 1));
-        const unrollPages = easeInOut3(THREE.MathUtils.clamp((phase.p - 0.48) / 0.34, 0, 1));
-        r.pageItems.forEach((page, idx) => {
-          const local = easeInOut3(THREE.MathUtils.clamp((foldPages - page.delay) / Math.max(0.001, 1 - page.delay), 0, 1));
-          const theta = (idx / r.pageItems.length) * Math.PI * 2 + phase.elapsed * 0.18;
-          const ringPos = r.timelineAxis.clone().multiplyScalar(Math.cos(theta) * r0 * 0.82)
-            .add(r.timelineUp.clone().multiplyScalar(Math.sin(theta) * r0 * 0.26))
-            .add(r.enterAxis.clone().multiplyScalar(Math.sin(theta) * r0 * 0.12));
-          const linePos = r.timelineAxis.clone().multiplyScalar((idx / (r.pageItems.length - 1) - 0.5) * r0 * 4.1);
-          page.mesh.position.copy(page.origin).lerp(ringPos, local).lerp(linePos, unrollPages);
-          page.mesh.scale.set(1 - unrollPages * 0.4, 1 - local * 0.18, 1);
-          page.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), r.enterAxis);
-          page.mesh.rotateZ((idx - 4) * 0.04 + local * Math.PI * 0.28 + unrollPages * Math.PI * 0.08);
+        // ===== 自转蓄力加速 =====
+        // 自转速度在解体前由 0.0045 陡升至 0.28 rad/frame，创造蓄力自转感
+        const spinSpeed = THREE.MathUtils.lerp(0.0045, 0.28, easeInPow(Math.min(1, phase.p / 0.62), 2.3));
+        r.spinPhase += spinSpeed;
 
-          const posArr = (r.spineLines.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
-          const start = idx * 6;
-          posArr[start] = page.origin.x;
-          posArr[start + 1] = page.origin.y;
-          posArr[start + 2] = page.origin.z;
-          posArr[start + 3] = page.mesh.position.x;
-          posArr[start + 4] = page.mesh.position.y;
-          posArr[start + 5] = page.mesh.position.z;
-        });
-        (r.spineLines.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-        const spineOp = phase.p < 0.8
-          ? 0.42 * easeOut3(Math.min(1, phase.p / 0.3))
-          : 0.42 * Math.max(0, 1 - (phase.p - 0.8) / 0.2);
-        r.spineMaterial.opacity += (spineOp - r.spineMaterial.opacity) * 0.22;
-        const pageOp = phase.p < 0.82
-          ? 0.32 * easeOut3(Math.min(1, phase.p / 0.18))
-          : 0.32 * Math.max(0, 1 - (phase.p - 0.82) / 0.18);
-        r.pageMaterial.opacity += (pageOp - r.pageMaterial.opacity) * 0.22;
+        // 星环和未解体的碎片组做整体快速旋转
+        r.ringPoints.rotation.y = -r.spinPhase * 0.75;
+        r.ringPoints.rotation.z = r.spinPhase * 0.32;
 
-        // 环加速自转（pA 段）：通过整体绕 timelineUp 自转的角度（不改 positions，只改 ringPoints.rotation）
-        const spinSpeed = THREE.MathUtils.lerp(0.01, 0.14, easeInPow(Math.min(1, phase.p / 0.4), 1.8));
-        r.ringPoints.rotation.y += spinSpeed;
+        if (phase.p < 0.6) {
+          r.shards.rotation.y = r.spinPhase;
+          r.shards.rotation.x = r.spinPhase * 0.45;
+        }
 
-        // pB / pC：环开始"切开"并展开成时间线
-        // 引入等距物理弹性阻尼过渡：带有超调 (Overshoot) 和弹性衰减的 unroll 运动
-        const unrollT = Math.max(0, Math.min(1, (phase.p - 0.2) / 0.45));
-        // 我们利用衰减余弦构造一个具备物理弹性的过渡因子 (Spring-Damp interpolation)
-        // 在 0 处为 0，1 处为 1，但带有阻尼余震
-        const springUnroll = unrollT <= 0 ? 0 : unrollT >= 1 ? 1 : 1 - Math.exp(-unrollT * 4.5) * Math.cos(unrollT * Math.PI * 1.5);
+        // ===== 阶段 1：星环在推进时保持常态，穿梭瞬间（0.58后）向四周极速打开 =====
+        const tRing = Math.max(0, (phase.p - 0.58) / 0.42);
+        const expandFactor = 1.0 + easeInPow(tRing, 2.0) * 4.6;
+        const currentR = r0 * 1.25 * expandFactor;
 
-        // pC 末段：时间线进一步向远端铺开（在 timelineAxis 方向乘 spreadFactor）
-        const spreadT = Math.max(0, (phase.p - 0.55) / 0.45);
-        const spreadFactor = 1 + spreadT * 2.5;
-
-        // 测地线衰减驻波：
-        // 纸页完全展开时（unrollT 开启），激发起简谐震颤，振幅随时间和空间传播并指数衰减
-        const waveAmp = 0.22 * r0 * Math.max(0, unrollT) * Math.exp(-Math.max(0, phase.p - 0.35) * 4.0);
-
-        const lineWidth = ringRadius * 4 * spreadFactor;
         for (let i = 0; i < particleCount; i += 1) {
-          const theta = r.ringInitialAngles[i];
-          const lineT = theta / (Math.PI * 2);  // 0..1
-          // 先从纸页边缘沉积出来，再折成环
-          const pageX = (lineT - 0.5) * r0 * 2.7;
-          const pageY = (r.ringJitter[i] - 0.5) * r0 * 0.18;
-          const pageZ = (Math.sin(i * 0.41) * 0.5 + 0.5 - 0.5) * r0 * 0.08;
-          const ringX = THREE.MathUtils.lerp(pageX, Math.cos(theta) * ringRadius, foldPages);
-          const ringY = THREE.MathUtils.lerp(pageY, (r.ringJitter[i] - 0.5) * 0.06, foldPages);
-          const ringZ = THREE.MathUtils.lerp(pageZ, Math.sin(theta) * ringRadius, foldPages);
-          // 时间线位置（沿 +x 线性铺开，z 维度保留波纹 + 物理驻波弹颤）
-          const lineX = (lineT - 0.5) * lineWidth;
-          const lineY = (r.ringJitter[i] - 0.5) * 0.04;
-          // 驻波波动：波在粒子链上传播
-          const wavePhase = lineT * Math.PI * 8 - phase.elapsed * 15.0;
-          const springWave = Math.sin(wavePhase) * waveAmp;
-          const noise = Math.sin(lineT * Math.PI * 6 + r.ringJitter[i] * 4) * r0 * 0.12;
-          const lineZ = noise + springWave;
-          // 用具有物理弹性的 springUnroll 替代纯线性 unrollEase
-          r.ringPositions[i * 3 + 0] = ringX + (lineX - ringX) * springUnroll;
-          r.ringPositions[i * 3 + 1] = ringY + (lineY - ringY) * springUnroll;
-          r.ringPositions[i * 3 + 2] = ringZ + (lineZ - ringZ) * springUnroll;
+          const theta0 = r.ringInitialAngles[i];
+          const theta = theta0; // 让它的旋转由 ringPoints.rotation 整体带动
+          const cosT = Math.cos(theta);
+          const sinT = Math.sin(theta);
+
+          r.ringPositions[i * 3 + 0] = cosT * currentR + (r.ringJitter[i] - 0.5) * 0.08 * (1.0 - easeOut3(tRing));
+          r.ringPositions[i * 3 + 1] = (r.ringJitter[i] - 0.5) * 0.05 * (1.0 - easeOut3(tRing));
+          r.ringPositions[i * 3 + 2] = sinT * currentR + (r.ringJitter[i] - 0.5) * 0.08 * (1.0 - easeOut3(tRing));
         }
         (r.ringPoints.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
 
-        // 拓扑三叶结不变量 (Knot Invariant)：在 pC 阶段（当核心飞逝后）逐渐从世界中心浮现
-        // 它的出现隐喻着即使一切形态在时间长河中消散，其拓扑不变量永恒保留
-        const knotOpTarget = phase.p > 0.42
-          ? 0.55 * easeOut3(THREE.MathUtils.clamp((phase.p - 0.42) / 0.32, 0, 1)) * Math.max(0, 1 - (phase.p - 0.82) / 0.18)
-          : 0;
-        r.invariantKnotMaterial.opacity += (knotOpTarget - r.invariantKnotMaterial.opacity) * 0.18;
-        r.invariantKnot.rotation.z += 0.005;
-        r.invariantKnot.rotation.y += 0.008;
+        r.ringMaterial.opacity = 0.48 * (1.0 - easeInOut3(phase.p));
 
+        // ===== 阶段 2：八面体碎片在穿梭瞬间（0.6后）炸裂飞散 =====
+        if (phase.p >= 0.6) {
+          const tShard = Math.max(0, (phase.p - 0.6) / 0.4);
+          // 加速向法线方向飞散
+          const fly = 4.2 * Math.pow(tShard, 1.8);
+          const shardSpin = tShard * Math.PI * 1.5;
+          const shardOp = 0.26 * (1.0 - Math.pow(tShard, 1.5));
 
-        // 环 / 时间线透明度：pA 加深，pC 末稍微淡出（但保留到最后）
-        const ringOp = phase.p < 0.85
-          ? 0.42 + 0.2 * easeOut3(Math.min(1, phase.p / 0.5))
-          : 0.62 * (1 - (phase.p - 0.85) / 0.15 * 0.5);
-        r.ringMaterial.opacity += (ringOp - r.ringMaterial.opacity) * 0.18;
-
-        // 内核：先加速自转，pB 末开始被"时间线"拉走（沿 timelineAxis 正方向飞）
-        r.core.rotation.y += 0.02 + phase.p * 0.08;
-        r.core.rotation.x += 0.014 + phase.p * 0.05;
-        const corePullT = Math.max(0, (phase.p - 0.45) / 0.55);
-        const corePullDist = corePullT * r0 * 3.2;
-        r.core.position.copy(r.worldCenter).add(r.timelineAxis.clone().multiplyScalar(corePullDist));
-        const coreScale = 1 - corePullT * 0.4;
-        r.core.scale.setScalar(Math.max(0.1, coreScale));
-        const coreMat = r.core.material as THREE.MeshBasicMaterial;
-        const coreOp = 0.6 * (1 - corePullT * 0.85);
-        coreMat.opacity += (Math.max(0, coreOp) - coreMat.opacity) * 0.22;
+          r.shardItems.forEach((s, idx) => {
+            const wobble = 0.9 + (Math.sin(idx * 2.3) * 0.5 + 0.5) * 0.35;
+            const offset = s.normal.clone().multiplyScalar(s.center.length() * fly * wobble);
+            s.mesh.position.copy(s.center).add(offset);
+            s.mesh.rotation.x = shardSpin * (0.5 + (idx % 3) * 0.3);
+            s.mesh.rotation.y = shardSpin * (0.3 + (idx % 2) * 0.4);
+            (s.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, shardOp);
+          });
+        }
       },
 
       updateFocusNode(_runtime, refs, phase) {
+        // 重写接管：由于我们在 build 里对原 coreMesh 和 points 进行了直接 visible = false 的完全隐藏，
+        // 我们不需要在 updateFocusNode 里再去淡出，从而根除了任何跳变或重叠！
         const item = refs.focused;
-        const fadeP = Math.min(1, phase.p / 0.18);
-        const op = 0.32 * (1 - easeOut3(fadeP));
-        const mat = item.coreMesh.material as THREE.MeshBasicMaterial | THREE.PointsMaterial;
-        mat.opacity += (op - mat.opacity) * 0.28;
-        item.outerStructures.forEach((struct) => {
-          const m = (struct as THREE.Mesh | THREE.Points).material as THREE.MeshBasicMaterial | THREE.PointsMaterial | undefined;
-          if (m) m.opacity += (op * 0.6 - m.opacity) * 0.28;
-        });
+        if (item.coreMesh) item.coreMesh.visible = false;
+        item.outerStructures.forEach((struct) => { struct.visible = false; });
       },
 
       dispose(_runtime, refs) {
         const r = _runtime as JournalEntryRuntime;
-        r.pageItems.forEach((p) => p.mesh.geometry.dispose());
-        r.pageMaterial.dispose();
-        refs.scene.remove(r.pages);
-        refs.scene.remove(r.spineLines); disposeObject3D(r.spineLines);
         refs.scene.remove(r.ringPoints);
         r.ringPoints.geometry.dispose();
         r.ringMaterial.dispose();
-        refs.scene.remove(r.core); disposeObject3D(r.core);
-        refs.scene.remove(r.invariantKnot);
-        r.invariantKnot.geometry.dispose();
-        r.invariantKnotMaterial.dispose();
+        
+        refs.scene.remove(r.shards);
+        r.shardItems.forEach((s) => {
+          s.mesh.geometry.dispose();
+        });
+        if (r.shards.children.length > 0) {
+          ((r.shards.children[0] as THREE.Mesh).material as THREE.Material).dispose();
+        }
+
+        refs.scene.remove(r.core);
+        disposeObject3D(r.core);
+
+        // 退出重置可见性，确保返回Overview时，原星座节点无缝还原
+        const item = refs.focused;
+        if (item.coreMesh) {
+          item.coreMesh.visible = true;
+          (item.coreMesh.material as THREE.Material).opacity = 0.26;
+        }
+        item.outerStructures.forEach((struct) => {
+          struct.visible = true;
+          const m = (struct as THREE.Mesh | THREE.Points).material as THREE.Material | undefined;
+          if (m) m.opacity = 0.48;
+        });
       },
     };
 
