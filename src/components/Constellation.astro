@@ -243,6 +243,9 @@
     let pointerLastY = 0;
     let dragDistance = 0;
     let isDraggingView = false;
+    const pointerMap = new Map<number, { x: number; y: number }>();
+    let pinchStartDist = 0;
+    let pinchStartRadius = 0;
     let hasNavigated = false;
     let enteringStartTime = 0;
     const enterDurationDefault = 1320;
@@ -2506,18 +2509,37 @@
     }
 
     function onPointerMove(event: PointerEvent) {
+      if (pointerMap.has(event.pointerId)) {
+        pointerMap.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      }
+
       const rect = container.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / height) * 2 + 1;
 
-      if (isDraggingView && systemState !== 'ENTERING') {
+      if (pointerMap.size >= 2 && systemState !== 'ENTERING') {
+        const pts = Array.from(pointerMap.values());
+        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        if (pinchStartDist > 0 && dist > 0) {
+          const scale = pinchStartDist / dist;
+          const minRadius = focusedNode ? 5.2 : 18;
+          const maxRadius = focusedNode ? 15 : 46 * viewRadiusScale();
+          orbitTarget.radius = Math.max(minRadius, Math.min(maxRadius, pinchStartRadius * scale));
+        }
+        hoveredNode = null;
+        labelEl.classList.remove('is-visible');
+        return;
+      }
+
+      if (isDraggingView && pointerMap.size <= 1 && systemState !== 'ENTERING') {
         const dx = event.clientX - pointerLastX;
         const dy = event.clientY - pointerLastY;
         pointerLastX = event.clientX;
         pointerLastY = event.clientY;
         dragDistance += Math.abs(dx) + Math.abs(dy);
         orbitTarget.theta -= dx * 0.006;
-        orbitTarget.phi = Math.max(0.32, Math.min(Math.PI - 0.32, orbitTarget.phi + dy * 0.005));
+        // dy>0(手指向下) → phi 减小 → 相机沿球面向上,视野跟随手指方向(OrbitControls 默认)
+        orbitTarget.phi = Math.max(0.32, Math.min(Math.PI - 0.32, orbitTarget.phi - dy * 0.005));
         container.style.cursor = 'grabbing';
         hoveredNode = null;
         labelEl.classList.remove('is-visible');
@@ -2530,21 +2552,51 @@
 
     function onPointerDown(event: PointerEvent) {
       if ((event.target as Element).closest('button') || (event.target as Element).closest('.world-panel')) return;
-      pointerStartX = event.clientX;
-      pointerStartY = event.clientY;
-      pointerLastX = event.clientX;
-      pointerLastY = event.clientY;
-      dragDistance = 0;
-      isDraggingView = systemState !== 'ENTERING';
+      pointerMap.set(event.pointerId, { x: event.clientX, y: event.clientY });
       container.setPointerCapture(event.pointerId);
-      container.style.cursor = 'grabbing';
+
+      if (pointerMap.size === 1) {
+        pointerStartX = event.clientX;
+        pointerStartY = event.clientY;
+        pointerLastX = event.clientX;
+        pointerLastY = event.clientY;
+        dragDistance = 0;
+        isDraggingView = systemState !== 'ENTERING';
+        container.style.cursor = 'grabbing';
+      } else if (pointerMap.size === 2) {
+        // 进入双指 pinch:停止 orbit,记录初始两指距离与 radius 作为缩放基准
+        const pts = Array.from(pointerMap.values());
+        pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        pinchStartRadius = orbitTarget.radius;
+        isDraggingView = false;
+      }
     }
 
     function onPointerUp(event: PointerEvent) {
+      const wasPinching = pointerMap.size >= 2;
+      pointerMap.delete(event.pointerId);
+      if (container.hasPointerCapture(event.pointerId)) container.releasePointerCapture(event.pointerId);
+
+      // pinch → 单指:把 last 锚到剩下那根手指,防 orbit 跳变;本次抬起不算 tap
+      if (wasPinching && pointerMap.size === 1) {
+        const remaining = Array.from(pointerMap.values())[0];
+        pointerLastX = remaining.x;
+        pointerLastY = remaining.y;
+        pinchStartDist = 0;
+        return;
+      }
+
+      // 还有其它手指按着,不结算
+      if (pointerMap.size > 0) return;
+
       if (isDraggingView) {
         isDraggingView = false;
-        if (container.hasPointerCapture(event.pointerId)) container.releasePointerCapture(event.pointerId);
         container.style.cursor = hoveredNode ? 'pointer' : 'grab';
+      }
+
+      if (wasPinching) {
+        pinchStartDist = 0;
+        return;
       }
 
       if (systemState !== 'OVERVIEW' || !hoveredNode) return;
@@ -2556,6 +2608,16 @@
         return;
       }
       focusNode(hoveredNode);
+    }
+
+    function onPointerCancel(event: PointerEvent) {
+      pointerMap.delete(event.pointerId);
+      if (container.hasPointerCapture(event.pointerId)) container.releasePointerCapture(event.pointerId);
+      if (pointerMap.size < 2) pinchStartDist = 0;
+      if (pointerMap.size === 0) {
+        isDraggingView = false;
+        container.style.cursor = hoveredNode ? 'pointer' : 'grab';
+      }
     }
 
     function onWheel(event: WheelEvent) {
@@ -2715,6 +2777,7 @@
     window.addEventListener('pointermove', onPointerMove);
     container.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
     window.addEventListener('pointerleave', onPointerLeave);
     container.addEventListener('wheel', onWheel, { passive: false });
     document.addEventListener('visibilitychange', onVisibility);
@@ -2735,6 +2798,7 @@
       window.removeEventListener('pointermove', onPointerMove);
       container.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
       window.removeEventListener('pointerleave', onPointerLeave);
       container.removeEventListener('wheel', onWheel);
       document.removeEventListener('visibilitychange', onVisibility);
