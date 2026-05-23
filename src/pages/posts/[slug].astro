@@ -92,7 +92,7 @@ const relatedPosts = allPosts
               const relatedDomain = primaryDomain(p.data.tags);
               return (
                 <a 
-                  href={pathFor(`/blog/${p.slug}`)}
+                  href={pathFor(`/posts/${p.slug}`)}
                   class={`domain-${relatedDomain.id} grid gap-3 border border-arcane-border bg-white p-4 transition-colors hover:border-domain md:grid-cols-[auto_1fr]`}
                 >
                   <span class="grid h-10 w-10 place-items-center border border-domain font-mono text-domain">{relatedDomain.glyph}</span>

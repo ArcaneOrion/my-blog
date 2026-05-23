@@ -15,7 +15,7 @@ interface Props {
 const { title, description, date, tags, slug, aiAssisted, body = '' } = Astro.props;
 const domain = primaryDomain(tags);
 const minutes = body ? readingMinutes(body) : 1;
-const href = pathFor(`/blog/${slug}`);
+const href = pathFor(`/posts/${slug}`);
 ---
 
 <article class={`group domain-${domain.id} observatory-panel relative min-h-[22rem] overflow-hidden p-5 transition-transform duration-300 hover:-translate-y-1`}>
