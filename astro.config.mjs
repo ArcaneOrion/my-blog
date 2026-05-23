@@ -5,7 +5,7 @@ import rehypeKatex from 'rehype-katex';
 
 export default defineConfig({
   site: 'https://arcaneorion.github.io',
-  base: '/my-blog',
+  base: '/blog',
   output: 'static',
   integrations: [react()],
   markdown: {
